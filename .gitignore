@@ -1,0 +1,18 @@
+﻿# Saidas de build
+build/
+*.o
+*.elf
+
+# Copias de seguranca locais
+backup-*/
+checkpoint-*/
+
+# Notas internas de desenvolvimento
+estado-atual.txt
+PS2DVDPlayer_Prompt_Mestre_Atualizado.md
+interface-model.png
+
+# Lixo do Windows / WSL
+*Zone.Identifier
+Thumbs.db
+desktop.ini

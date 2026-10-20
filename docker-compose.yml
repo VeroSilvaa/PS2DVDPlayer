@@ -1,0 +1,10 @@
+services:
+  ps2dvdplayer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ps2dvdplayer-build
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+    command: make

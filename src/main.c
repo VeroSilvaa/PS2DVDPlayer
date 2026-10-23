@@ -177,6 +177,15 @@ enum { LIB_SMB = 0, LIB_USB, LIB_HDD };
 #define LIB_MAX_NAME  128
 #define LIB_PATH_MAX  (16 + 8 + LIB_MAX_NAME)
 
+/*
+ * Tela inicial: busca USB/HDD (1 = pedida, roda no próximo quadro) e
+ * aviso/erro mostrado abaixo das opções.
+ */
+static int main_bdm_state = 0;
+static int main_bdm_kind = 0;
+static char main_msg[160];
+static int main_msg_error = 0;
+
 static int lib_source = LIB_SMB;
 static char lib_dir[24];                /* ex.: "usb0:/FILMES" */
 static char lib_label[96];              /* cabeçalho da lista */
@@ -558,6 +567,22 @@ static void draw_main(
         COLOR_WHITE,
         smb_text
     );
+
+
+    /* USB/HDD: procurando ou erro */
+    if (main_msg[0])
+    {
+        gsKit_fontm_print_scaled(
+            gsGlobal,
+            font,
+            175.0f,
+            332.0f,
+            4,
+            0.40f,
+            main_msg_error ? COLOR_ERROR : COLOR_WHITE,
+            main_msg
+        );
+    }
 
 
     {
@@ -1451,8 +1476,21 @@ static void smb_apply(void)
  * CONTROLE DA TELA PRINCIPAL
  * ============================================================ */
 
+static void main_bdm_open(void);
+
 static void update_main(void)
 {
+    /* busca pedida no quadro anterior: o aviso já foi desenhado */
+    if (main_bdm_state == 1)
+    {
+        main_bdm_open();
+        return;
+    }
+
+    /* aviso anterior some na próxima ação */
+    if (input_pressed(PAD_UP) || input_pressed(PAD_DOWN) || input_pressed(PAD_CROSS))
+        main_msg[0] = '\0';
+
     if (input_pressed(PAD_UP))
     {
         main_selected--;
@@ -1493,37 +1531,60 @@ static void update_main(void)
         else
         {
             /*
-             * USB (0) / HDD (1): FAT32/exFAT pelo BDM. Monta,
-             * lista /FILMES e abre a mesma biblioteca do SMB.
+             * USB (0) / HDD (1): pedido; a busca roda no próximo
+             * quadro, com "SEARCHING..." já na tela.
              */
-            int kind = main_selected == 0 ? BDM_USB : BDM_HDD;
-            const BDMInfo *info;
-            int result;
+            main_bdm_kind = main_selected == 0 ? BDM_USB : BDM_HDD;
+            main_bdm_state = 1;
 
-            result = bdm_init(kind);
-
-            printf("MAIN: bdm_init(%s) returned %d\n", bdm_kind_name(kind), result);
-
-            if (result == 0)
-            {
-                result = bdm_list_dvd(kind);
-
-                printf("MAIN: bdm_list_dvd(%s) returned %d\n", bdm_kind_name(kind), result);
-            }
-
-            info = bdm_get_info(kind);
-
-            if (result < 0 && info)
-                printf("MAIN: %s ERROR: %s\n", bdm_kind_name(kind), info->error);
-
-            /* unidade montada: abre a biblioteca (mesmo se vazia) */
-            if (info && info->mounted && result >= 0)
-            {
-                lib_from_bdm(kind);
-                lib_show();
-            }
+            snprintf(main_msg, sizeof(main_msg), "Searching %s...",
+                     bdm_kind_name(main_bdm_kind));
+            main_msg_error = 0;
         }
     }
+}
+
+
+/*
+ * USB/HDD: FAT32/exFAT pelo BDM. Monta (até 5 s, a tela fica parada
+ * com o aviso), lista /FILMES e abre a mesma biblioteca do SMB; em
+ * caso de erro, a mensagem fica na tela inicial.
+ */
+static void main_bdm_open(void)
+{
+    int kind = main_bdm_kind;
+    const BDMInfo *info;
+    int result;
+
+    main_bdm_state = 0;
+
+    result = bdm_init(kind);
+
+    printf("MAIN: bdm_init(%s) returned %d\n", bdm_kind_name(kind), result);
+
+    if (result == 0)
+    {
+        result = bdm_list_dvd(kind);
+
+        printf("MAIN: bdm_list_dvd(%s) returned %d\n", bdm_kind_name(kind), result);
+    }
+
+    info = bdm_get_info(kind);
+
+    if (result < 0)
+    {
+        printf("MAIN: %s ERROR: %s\n", bdm_kind_name(kind), info->error);
+
+        snprintf(main_msg, sizeof(main_msg), "%s: %s", bdm_kind_name(kind), info->error);
+        main_msg_error = 1;
+        return;
+    }
+
+    /* unidade montada: abre a biblioteca (mesmo se vazia) */
+    main_msg[0] = '\0';
+
+    lib_from_bdm(kind);
+    lib_show();
 }
 
 

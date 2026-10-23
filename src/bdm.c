@@ -41,7 +41,11 @@ static int coreLoaded = 0;
 
 static void bdm_set_error(int kind, const char *message, int code)
 {
-    snprintf(bdmInfo[kind].error, sizeof(bdmInfo[kind].error), "%s (%d)", message, code);
+    if (code != 0)
+        snprintf(bdmInfo[kind].error, sizeof(bdmInfo[kind].error), "%s (%d)", message, code);
+    else
+        snprintf(bdmInfo[kind].error, sizeof(bdmInfo[kind].error), "%s", message);
+
     printf("BDM %s: %s\n", bdm_kind_name(kind), bdmInfo[kind].error);
 }
 
@@ -261,7 +265,7 @@ int bdm_list_dvd(int kind)
 
     if (dir < 0)
     {
-        bdm_set_error(kind, "Cannot open " BDM_DVD_DIR, dir);
+        bdm_set_error(kind, "Folder " BDM_DVD_DIR " not found", dir);
         return -2;
     }
 

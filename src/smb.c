@@ -11,6 +11,7 @@
 #include <ps2smb.h>
 
 #include "smb.h"
+#include "io_modules.h"
 
 #define SMB_DEVICE   "smb0:"
 #define SMB_PORT     445
@@ -20,19 +21,12 @@
  *
  * A pilha TCP/IP (PS2IP-NM + PS2IPS) é carregada por network.c.
  * A pilha de rede principal permanece sob responsabilidade de network.c.
+ * IOMANX/FILEXIO: io_modules_init() (compartilhado com USB/HDD).
  */
-extern unsigned char IOMANX_irx[];
-extern unsigned int size_IOMANX_irx;
-
-extern unsigned char FILEXIO_irx[];
-extern unsigned int size_FILEXIO_irx;
-
 extern unsigned char SMBMAN_irx[];
 extern unsigned int size_SMBMAN_irx;
 
 static SMBInfo smbInfo;
-static int modulesLoaded = 0;
-static int fileXioStarted = 0;
 static int smbmanLoaded = 0;
 
 /* ============================================================
@@ -221,102 +215,22 @@ int smb_init(void)
 
     /*
      * ========================================================
-     * MÓDULOS DE FILE I/O
+     * MÓDULOS DE FILE I/O (compartilhados com USB/HDD)
      * ========================================================
      */
 
-    if (!modulesLoaded)
+    result =
+        io_modules_init();
+
+
+    if (result < 0)
     {
-        /*
-         * IOMANX
-         */
-
-        result =
-            smb_load_module(
-                "IOMANX",
-                IOMANX_irx,
-                size_IOMANX_irx
-            );
-
-
-        if (result < 0)
-        {
-            smb_set_error(
-                "IOMANX load failed",
-                result
-            );
-
-            return -1;
-        }
-
-
-        /*
-         * FILEXIO
-         */
-
-        result =
-            smb_load_module(
-                "FILEXIO",
-                FILEXIO_irx,
-                size_FILEXIO_irx
-            );
-
-
-        if (result < 0)
-        {
-            smb_set_error(
-                "FILEXIO load failed",
-                result
-            );
-
-            return -2;
-        }
-
-
-        modulesLoaded = 1;
-    }
-
-
-    /*
-     * ========================================================
-     * FILEXIO RPC
-     * ========================================================
-     */
-
-    if (!fileXioStarted)
-    {
-        printf(
-            "SMB: fileXioInit\n"
-        );
-
-
-        result =
-            fileXioInit();
-
-
-        printf(
-            "SMB: fileXioInit returned %d\n",
+        smb_set_error(
+            "IOMANX/FILEXIO init failed",
             result
         );
 
-
-        if (result < 0)
-        {
-            smb_set_error(
-                "fileXioInit failed",
-                result
-            );
-
-            return -3;
-        }
-
-
-        fileXioStarted = 1;
-
-
-        printf(
-            "SMB: fileXio initialized\n"
-        );
+        return -1;
     }
 
 

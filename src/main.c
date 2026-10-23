@@ -21,7 +21,7 @@
 #include "memcard.h"
 #include "network.h"
 
-#include "hdd.h"
+#include "bdm.h"
 #include "iop_boot.h"
 
 /* ============================================================
@@ -1409,129 +1409,32 @@ static void update_main(void)
 
             current_screen = SCREEN_SMB;
         }
-        else if (main_selected == 0)
+        else
         {
-            printf(
-                "MAIN: USB selected\n"
-            );
+            /*
+             * USB (0) / HDD (1): FAT32/exFAT pelo BDM.
+             * Etapa 1: carrega, monta e lista no log.
+             */
+            int kind = main_selected == 0 ? BDM_USB : BDM_HDD;
+            const BDMInfo *info;
+            int result;
+
+            result = bdm_init(kind);
+
+            printf("MAIN: bdm_init(%s) returned %d\n", bdm_kind_name(kind), result);
+
+            if (result == 0)
+            {
+                result = bdm_list_dvd(kind);
+
+                printf("MAIN: bdm_list_dvd(%s) returned %d\n", bdm_kind_name(kind), result);
+            }
+
+            info = bdm_get_info(kind);
+
+            if (result < 0 && info)
+                printf("MAIN: %s ERROR: %s\n", bdm_kind_name(kind), info->error);
         }
-       else if (main_selected == 1)
-{
-    const HDDInfo *info;
-    int result;
-    int i;
-
-    printf("\n");
-    printf("=================================\n");
-    printf(" PS2DVDPlayer - HDD TEST\n");
-    printf("=================================\n");
-
-    result = hdd_init();
-
-    printf(
-        "MAIN: hdd_init returned %d\n",
-        result
-    );
-
-    if (result < 0)
-    {
-        info = hdd_get_info();
-
-        if (info)
-        {
-            printf(
-                "MAIN: HDD INIT ERROR: %s\n",
-                info->error
-            );
-        }
-
-        return;
-    }
-
-
-    result = hdd_mount();
-
-    printf(
-        "MAIN: hdd_mount returned %d\n",
-        result
-    );
-
-    if (result < 0)
-    {
-        info = hdd_get_info();
-
-        if (info)
-        {
-            printf(
-                "MAIN: HDD MOUNT ERROR: %s\n",
-                info->error
-            );
-        }
-
-        return;
-    }
-
-
-    result = hdd_list_dvd();
-
-    printf(
-        "MAIN: hdd_list_dvd returned %d\n",
-        result
-    );
-
-    if (result < 0)
-    {
-        info = hdd_get_info();
-
-        if (info)
-        {
-            printf(
-                "MAIN: HDD LIST ERROR: %s\n",
-                info->error
-            );
-        }
-
-        return;
-    }
-
-
-    info = hdd_get_info();
-
-    if (!info)
-        return;
-
-
-    printf("\n");
-    printf("---------------------------------\n");
-    printf(
-        "HDD: %d ISO file(s)\n",
-        info->file_count
-    );
-    printf("---------------------------------\n");
-
-
-    for (
-        i = 0;
-        i < info->file_count;
-        i++
-    )
-    {
-        printf(
-            "%02d: %s\n",
-            i + 1,
-            info->files[i].name
-        );
-
-        printf(
-            "    %llu bytes\n",
-            (unsigned long long)
-                info->files[i].size
-        );
-    }
-
-
-    printf("---------------------------------\n");
-}
     }
 }
 

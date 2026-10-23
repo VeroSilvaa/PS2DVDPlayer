@@ -16,7 +16,8 @@ EE_OBJS = \
 	build/libmpeg.o \
 	build/libmpeg_core.o \
 	build/libmpeg_op.o \
-	build/hdd.o \
+	build/io_modules.o \
+	build/bdm.o \
 	build/DEV9_irx.o \
 	build/NETMAN_irx.o \
 	build/SMAP_irx.o \
@@ -24,9 +25,11 @@ EE_OBJS = \
 	build/FILEXIO_irx.o \
 	build/PS2IP_irx.o \
 	build/PS2IPS_irx.o \
-	build/ATAD_irx.o \
-	build/HDD_irx.o \
-	build/PFS_irx.o \
+	build/BDM_irx.o \
+	build/BDMFS_FATFS_irx.o \
+	build/USBD_irx.o \
+	build/USBMASS_BD_irx.o \
+	build/ATA_BD_irx.o \
 	build/SMBMAN_irx.o \
 	build/LIBSD_irx.o \
 	build/AUDSRV_irx.o
@@ -202,10 +205,14 @@ build/iso.o: src/iso.c
 	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) \
 		-c $< -o $@
 
-build/hdd.o: src/hdd.c
+build/io_modules.o: src/io_modules.c
 	@mkdir -p $(@D)
 	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) \
-		-DNEWLIB_PORT_AWARE \
+		-c $< -o $@
+
+build/bdm.o: src/bdm.c
+	@mkdir -p $(@D)
+	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) \
 		-c $< -o $@
 
 
@@ -281,18 +288,47 @@ build/PS2IPS_irx.o: build/PS2IPS_irx.c
 	@mkdir -p $(@D)
 	$(EE_CC) $(EE_CFLAGS) -c $< -o $@
 
-# HDD / APA / PFS (símbolos PS2ATAD_irx, PS2HDD_irx, PS2FS_irx usados em hdd.c)
-build/ATAD_irx.c:
+# USB e HDD em FAT32/exFAT pelo BDM (mesma pilha do OPL/PS2FileManager),
+# usados em bdm.c. HDD em APA/PFS não é suportado.
+build/BDM_irx.c:
 	@mkdir -p $(@D)
-	bin2c $(PS2SDK)/iop/irx/ps2atad.irx $@ PS2ATAD_irx
+	bin2c $(PS2SDK)/iop/irx/bdm.irx $@ BDM_irx
 
-build/HDD_irx.c:
+build/BDMFS_FATFS_irx.c:
 	@mkdir -p $(@D)
-	bin2c $(PS2SDK)/iop/irx/ps2hdd.irx $@ PS2HDD_irx
+	bin2c $(PS2SDK)/iop/irx/bdmfs_fatfs.irx $@ BDMFS_FATFS_irx
 
-build/PFS_irx.c:
+build/USBD_irx.c:
 	@mkdir -p $(@D)
-	bin2c $(PS2SDK)/iop/irx/ps2fs.irx $@ PS2FS_irx
+	bin2c $(PS2SDK)/iop/irx/usbd.irx $@ USBD_irx
+
+build/USBMASS_BD_irx.c:
+	@mkdir -p $(@D)
+	bin2c $(PS2SDK)/iop/irx/usbmass_bd.irx $@ USBMASS_BD_irx
+
+build/ATA_BD_irx.c:
+	@mkdir -p $(@D)
+	bin2c $(PS2SDK)/iop/irx/ata_bd.irx $@ ATA_BD_irx
+
+build/BDM_irx.o: build/BDM_irx.c
+	@mkdir -p $(@D)
+	$(EE_CC) $(EE_CFLAGS) -c $< -o $@
+
+build/BDMFS_FATFS_irx.o: build/BDMFS_FATFS_irx.c
+	@mkdir -p $(@D)
+	$(EE_CC) $(EE_CFLAGS) -c $< -o $@
+
+build/USBD_irx.o: build/USBD_irx.c
+	@mkdir -p $(@D)
+	$(EE_CC) $(EE_CFLAGS) -c $< -o $@
+
+build/USBMASS_BD_irx.o: build/USBMASS_BD_irx.c
+	@mkdir -p $(@D)
+	$(EE_CC) $(EE_CFLAGS) -c $< -o $@
+
+build/ATA_BD_irx.o: build/ATA_BD_irx.c
+	@mkdir -p $(@D)
+	$(EE_CC) $(EE_CFLAGS) -c $< -o $@
 
 # Som: libsd + audsrv (PS2SDK)
 build/LIBSD_irx.c:
@@ -330,9 +366,11 @@ clean:
 		build/FILEXIO_irx.c \
 		build/PS2IP_irx.c \
 		build/PS2IPS_irx.c \
-		build/ATAD_irx.c \
-		build/HDD_irx.c \
-		build/PFS_irx.c \
+		build/BDM_irx.c \
+		build/BDMFS_FATFS_irx.c \
+		build/USBD_irx.c \
+		build/USBMASS_BD_irx.c \
+		build/ATA_BD_irx.c \
 		build/SMBMAN_irx.c
 
 

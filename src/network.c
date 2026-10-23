@@ -3,6 +3,7 @@
 
 #include <tamtypes.h>
 #include <kernel.h>
+#include <timer.h>
 #include <iopcontrol.h>
 #include <iopheap.h>
 #include <netman.h>
@@ -104,6 +105,19 @@ static int network_link_status(void)
  * DHCP
  * ============================================================ */
 
+/*
+ * Logo depois de ligar o DHCP o estado ainda é OFF (a negociação não
+ * começou): contar isso como pronto fazia o primeiro LOGON SMB sair
+ * 15 ms depois e cair (-4097) quando o DHCP reconfigurava a interface.
+ * OFF só vale como pronto depois que o DHCP passou por outro estado ou
+ * depois de DHCP_SETTLE_MS (comportamento antigo, como reserva).
+ */
+#define DHCP_SETTLE_MS 3000
+
+static u64 dhcp_started_at = 0;
+static int dhcp_seen_active = 0;
+static int dhcp_last_status = -1;
+
 static int network_dhcp_status(void)
 {
     t_ip_info ip_info;
@@ -115,14 +129,29 @@ static int network_dhcp_status(void)
     {
         if (ip_info.dhcp_enabled)
         {
-            if (
-                ip_info.dhcp_status == DHCP_STATE_BOUND ||
-                ip_info.dhcp_status == DHCP_STATE_OFF
-            )
+            int st = ip_info.dhcp_status;
+
+            if (st != dhcp_last_status)
             {
-                return 1;
+                printf("NETWORK: DHCP state %d -> %d\n", dhcp_last_status, st);
+                dhcp_last_status = st;
             }
 
+            if (st == DHCP_STATE_BOUND)
+                return 1;
+
+            if (st == DHCP_STATE_OFF)
+            {
+                u64 settle = (u64)kBUSCLK * DHCP_SETTLE_MS / 1000;
+
+                if (dhcp_seen_active || dhcp_started_at == 0 ||
+                    GetTimerSystemTime() - dhcp_started_at > settle)
+                    return 1;
+
+                return 0;
+            }
+
+            dhcp_seen_active = 1;
             return 0;
         }
     }
@@ -147,6 +176,10 @@ static int network_apply_dhcp(void)
 
     if (result < 0)
         return result;
+
+    /* ver network_dhcp_status(): OFF logo agora ainda não é pronto */
+    dhcp_started_at = GetTimerSystemTime();
+    dhcp_seen_active = 0;
 
     networkInfo.mode = NETWORK_DHCP;
 

@@ -11,6 +11,10 @@
 #include <gsToolkit.h>
 #include <libpad.h>
 
+/* só o ConfigParam/GetOsdConfigParam (sem a libcdvd) */
+#define OSD_CONFIG_NO_LIBCDVD
+#include <osd_config.h>
+
 #include "dbglog.h"
 #include "smb.h"
 #include "iso.h"
@@ -3766,6 +3770,129 @@ static void update_smb(void)
 
 
 /* ============================================================
+ * MODO DE VÍDEO
+ * ============================================================ */
+
+/*
+ * O PS2 não sabe qual cabo está ligado. A regra usa a configuração do
+ * console (Configuração do Sistema > Saída de vídeo componente):
+ *
+ *   R1 seguro no boot        -> entrelaçado da região (saída de emergência)
+ *   Y Cb/Cr (componente)     -> 480p
+ *   RGB / padrão             -> NTSC 480i ou PAL 576i (pela ROM do console),
+ *                               que funciona com qualquer cabo
+ *
+ * A tela continua 640x480 em todos (mesma VRAM e mesmo layout).
+ */
+static int video_pal = 0;
+
+static void video_mode_fix_pal(GSGLOBAL *gs);
+
+static void video_mode_interlaced(GSGLOBAL *gs)
+{
+    gs->Mode = gsKit_detect_signal() == GS_MODE_PAL ? GS_MODE_PAL : GS_MODE_NTSC;
+    gs->Interlace = GS_INTERLACED;
+    gs->Field = GS_FIELD;
+    video_pal = gs->Mode == GS_MODE_PAL;
+}
+
+
+static const char *video_mode_name(const GSGLOBAL *gs)
+{
+    return gs->Mode == GS_MODE_DTV_480P ? "480p" : video_pal ? "PAL 576i" : "NTSC 480i";
+}
+
+
+static void video_mode_choose(GSGLOBAL *gs)
+{
+    ConfigParam osd;
+
+    memset(&osd, 0, sizeof(osd));
+    GetOsdConfigParam(&osd);
+
+    if (osd.videoOutput == VIDEO_OUTPUT_COMPONENT)
+    {
+        gs->Mode = GS_MODE_DTV_480P;
+        gs->Interlace = GS_NONINTERLACED;
+        gs->Field = GS_FRAME;
+        video_pal = 0;
+    }
+    else
+        video_mode_interlaced(gs);
+
+    printf("MAIN: video mode %s (%s in the console settings; region %s, screen type %d)\n",
+           video_mode_name(gs),
+           osd.videoOutput == VIDEO_OUTPUT_COMPONENT ? "component (Y Cb/Cr)" : "RGB/default",
+           gsKit_detect_signal() == GS_MODE_PAL ? "PAL" : "NTSC", (int)osd.screenType);
+}
+
+
+/*
+ * R1 seguro no boot: volta ao entrelaçado (para TV que não aceita 480p).
+ * Lido depois do gsKit_init_screen: antes dele o controle ficava
+ * "estável" mas sem botões. Lê ~1 s; se precisar trocar, a tela é
+ * iniciada de novo (ainda não há nada mais na VRAM).
+ */
+static void video_mode_r1_override(GSGLOBAL *gs)
+{
+    u64 t0 = GetTimerSystemTime();
+    int stable = 0;
+    u16 seen = 0;
+
+    if (input_result != 0)
+        return;
+
+    while (GetTimerSystemTime() - t0 < (u64)kBUSCLK * 2 && stable < 60)
+    {
+        u64 tick = GetTimerSystemTime();
+
+        input_update();
+
+        if (input_get_state()->connected)
+        {
+            stable++;
+            seen |= input_get_state()->buttons;
+        }
+
+        /* ~16 ms entre leituras (um quadro) */
+        while (GetTimerSystemTime() - tick < (u64)kBUSCLK / 60)
+        {
+        }
+    }
+
+    printf("MAIN: pad after %u ms: %d stable reads, buttons 0x%04x\n",
+           (unsigned)(((GetTimerSystemTime() - t0) * 1000ULL) / kBUSCLK), stable, seen);
+
+    if (!(seen & PAD_R1) || gs->Mode != GS_MODE_DTV_480P)
+        return;
+
+    video_mode_interlaced(gs);
+
+    gs->CurrentPointer = 0;     /* as telas de 480p voltam para a VRAM */
+    gsKit_init_screen(gs);
+    video_mode_fix_pal(gs);
+
+    printf("MAIN: video mode %s (R1 held at boot)\n", video_mode_name(gs));
+}
+
+
+/*
+ * PAL mostra 576 linhas; a tela tem 480: exibe só as 480 e centraliza
+ * (sem isso as 96 de baixo vinham da VRAM depois da tela).
+ */
+static void video_mode_fix_pal(GSGLOBAL *gs)
+{
+    if (!video_pal)
+        return;
+
+    gs->DH = 480;
+    gsKit_set_display_offset(gs, 0, (576 - 480) / 2);
+
+    printf("MAIN: PAL display 480 of 576 lines, centered\n");
+}
+
+
+/* ============================================================
  * MAIN
  * ============================================================ */
 
@@ -3903,8 +4030,23 @@ int main(
 
 
     /*
-     * GS
+     * CONTROLE (antes do GS: R1 seguro no boot escolhe o modo de vídeo)
      */
+
+    printf(
+        "MAIN: calling input_init()...\n"
+    );
+
+
+    input_result =
+        input_init();
+
+
+    printf(
+        "MAIN: input_init returned %d\n",
+        input_result
+    );
+
 
     /*
      * GS
@@ -3931,14 +4073,8 @@ int main(
     }
 
 
-    gsGlobal->Mode =
-        GS_MODE_DTV_480P;
-
-    gsGlobal->Interlace =
-        GS_NONINTERLACED;
-
-    gsGlobal->Field =
-        GS_FRAME;
+    /* 480p, NTSC 480i ou PAL 576i (video_mode_choose) */
+    video_mode_choose(gsGlobal);
 
     gsGlobal->Width =
         640;
@@ -3995,6 +4131,11 @@ int main(
     gsKit_init_screen(
         gsGlobal
     );
+
+    video_mode_fix_pal(gsGlobal);
+
+    /* R1 seguro: força o entrelaçado (antes de qualquer textura na VRAM) */
+    video_mode_r1_override(gsGlobal);
 
 
     /*
@@ -4098,25 +4239,6 @@ int main(
 
     gsKit_sync_flip(
         gsGlobal
-    );
-
-
-    /*
-     * CONTROLE
-     */
-
-    printf(
-        "MAIN: calling input_init()...\n"
-    );
-
-
-    input_result =
-        input_init();
-
-
-    printf(
-        "MAIN: input_init returned %d\n",
-        input_result
     );
 
 

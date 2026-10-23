@@ -97,6 +97,19 @@ START confirma, ○ cancela.
 | SELECT | barra de controle (◀▶ escolhe, ✕ confirma) |
 | direcional + ✕ | botões dos menus do DVD |
 
+## Modo de vídeo
+
+O PS2 não sabe qual cabo está ligado; o programa usa a configuração do console
+(**Configuração do Sistema → Saída de vídeo componente**):
+
+| Configuração do console | Modo usado |
+|---|---|
+| **Y Cb/Cr** (cabo componente) | **480p** |
+| **RGB** ou padrão | **NTSC 480i** ou **PAL 576i**, pela região do console (funciona com qualquer cabo) |
+
+Se a TV não mostrar imagem em 480p, abra o programa **segurando R1**: ele usa o
+modo entrelaçado da região.
+
 ## Compilar
 
 Requisitos: Docker e Docker Compose (a imagem usa o toolchain do

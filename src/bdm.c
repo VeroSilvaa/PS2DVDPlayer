@@ -171,7 +171,7 @@ int bdm_init(int kind)
 
         if (result < 0)
         {
-            bdm_set_error(kind, "IOMANX/FILEXIO init failed", result);
+            bdm_set_error(kind, "Falha ao iniciar IOMANX/FILEXIO", result);
             return -2;
         }
 
@@ -179,7 +179,7 @@ int bdm_init(int kind)
 
         if (result < 0)
         {
-            bdm_set_error(kind, "BDM/BDMFS_FATFS load failed", result);
+            bdm_set_error(kind, "Falha ao carregar BDM/BDMFS_FATFS", result);
             return -3;
         }
 
@@ -198,7 +198,7 @@ int bdm_init(int kind)
 
         if (result < 0)
         {
-            bdm_set_error(kind, kind == BDM_USB ? "USB driver load failed" : "ATA driver load failed (no HDD?)", result);
+            bdm_set_error(kind, kind == BDM_USB ? "Falha ao carregar o driver USB" : "Falha ao carregar o driver ATA (sem HDD?)", result);
             return -4;
         }
 
@@ -214,7 +214,7 @@ int bdm_init(int kind)
 
         if (GetTimerSystemTime() - t0 > (u64)kBUSCLK * BDM_WAIT_SECONDS)
         {
-            bdm_set_error(kind, kind == BDM_USB ? "No USB drive found" : "No exFAT/FAT32 HDD found", 0);
+            bdm_set_error(kind, kind == BDM_USB ? "Nenhum pendrive encontrado" : "Nenhum HDD exFAT/FAT32 encontrado", 0);
             return -5;
         }
 
@@ -265,7 +265,7 @@ int bdm_list_dvd(int kind)
 
     if (dir < 0)
     {
-        bdm_set_error(kind, "Folder " BDM_DVD_DIR " not found", dir);
+        bdm_set_error(kind, "Pasta " BDM_DVD_DIR " não encontrada", dir);
         return -2;
     }
 

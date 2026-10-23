@@ -19,6 +19,10 @@ EE_OBJS = \
 	build/libmpeg_op.o \
 	build/io_modules.o \
 	build/bdm.o \
+	build/ui.o \
+	build/pngload.o \
+	build/font_sans_png.o \
+	build/buttons_png.o \
 	build/DEV9_irx.o \
 	build/NETMAN_irx.o \
 	build/SMAP_irx.o \
@@ -85,6 +89,8 @@ EE_LIBS = \
 	-lps2ips \
 	-lpatches \
 	-lpad \
+	-lpng \
+	-lz \
 	-lmc \
 	-lfileXio \
 	-laudsrv \
@@ -220,6 +226,36 @@ build/bdm.o: src/bdm.c
 	@mkdir -p $(@D)
 	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) \
 		-c $< -o $@
+
+# Interface gráfica (base do PS2FileManager): fonte e botões de assets/
+# (tools/make_assets.py), embutidos como PNG e decodificados com a libpng.
+build/ui.o: src/ui.c assets/font_sans_14.h assets/buttons.h
+	@mkdir -p $(@D)
+	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -Iassets \
+		-I$(GSKIT)/include \
+		-I$(GSKIT)/ee/dma/include \
+		-c $< -o $@
+
+build/pngload.o: src/pngload.c
+	@mkdir -p $(@D)
+	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) \
+		-c $< -o $@
+
+build/font_sans_png.c: assets/font_sans_14.png
+	@mkdir -p $(@D)
+	bin2c $< $@ font_sans_png
+
+build/buttons_png.c: assets/buttons.png
+	@mkdir -p $(@D)
+	bin2c $< $@ buttons_png
+
+build/font_sans_png.o: build/font_sans_png.c
+	@mkdir -p $(@D)
+	$(EE_CC) $(EE_CFLAGS) -c $< -o $@
+
+build/buttons_png.o: build/buttons_png.c
+	@mkdir -p $(@D)
+	$(EE_CC) $(EE_CFLAGS) -c $< -o $@
 
 
 # ============================================================
@@ -377,7 +413,9 @@ clean:
 		build/USBD_irx.c \
 		build/USBMASS_BD_irx.c \
 		build/ATA_BD_irx.c \
-		build/SMBMAN_irx.c
+		build/SMBMAN_irx.c \
+		build/font_sans_png.c \
+		build/buttons_png.c
 
 
 # ============================================================

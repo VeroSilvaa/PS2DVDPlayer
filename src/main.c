@@ -23,6 +23,7 @@
 #include "network.h"
 
 #include "bdm.h"
+#include "ui.h"
 #include "iop_boot.h"
 
 /* ============================================================
@@ -500,217 +501,86 @@ static void load_current_network_values(void)
  * DESENHO DA TELA PRINCIPAL
  * ============================================================ */
 
+/*
+ * Visual comum (interface-model.png): fundo em gradiente azul-escuro,
+ * cabeçalho com o nome do programa e o subtítulo da tela.
+ */
+#define UI_TEXT      ui_rgba(0xE6, 0xEE, 0xFF, 0x80)
+#define UI_DIM       ui_rgba(0x9A, 0xA8, 0xC4, 0x80)
+#define UI_ACCENT    ui_rgba(0x5C, 0xA8, 0xFF, 0x80)
+#define UI_OK        ui_rgba(0x4C, 0xE0, 0x7A, 0x80)
+#define UI_ERROR     ui_rgba(0xFF, 0x6B, 0x6B, 0x80)
+#define UI_PANEL     ui_rgba(0x08, 0x10, 0x26, 0x70)
+#define UI_EDGE      ui_rgba(0x2A, 0x4A, 0x86, 0x80)
+
+static void ui_screen_begin(GSGLOBAL *gsGlobal, const char *subtitle)
+{
+    gsKit_clear(gsGlobal, COLOR_BG);
+
+    ui_vgradient(0, 0, 640, 480, ui_rgba(0x0C, 0x1C, 0x40, 0x80), ui_rgba(0x02, 0x05, 0x10, 0x80));
+
+    /* cabeçalho */
+    ui_text_scaled(40, 22, 2.0f, "PS2DVDPlayer", UI_ACCENT);
+    ui_text(42, 64, subtitle, UI_DIM);
+    ui_rect(24, 92, 592, 2, UI_EDGE);
+}
+
+
 static void draw_main(
     GSGLOBAL *gsGlobal,
     GSFONTM *font
 )
 {
-    const char *usb_text = "  USB";
-    const char *hdd_text = "  HDD";
-    const char *smb_text = "  SMB";
+    /* ordem do modelo (tela 1) */
+    static const char *titles[3] = { "SMB", "USB", "HDD" };
+    static const char *subtitles[3] = {
+        "Filmes pela rede local",
+        "Armazenamento externo",
+        "Armazenamento interno"
+    };
+    const NetworkInfo *net;
+    int i;
 
+    (void)font;
 
-    gsKit_clear(
-        gsGlobal,
-        COLOR_BG
-    );
+    ui_screen_begin(gsGlobal, "DVD ISO PLAYER - PLAYSTATION 2");
 
+    /* fontes de filmes */
+    ui_rect(120, 116, 400, 3 * 64 + 16, UI_PANEL);
+    ui_border(120, 116, 400, 3 * 64 + 16, 2, UI_EDGE);
 
-    gsKit_fontm_print_scaled(
-        gsGlobal,
-        font,
-        220.0f,
-        45.0f,
-        2,
-        1.0f,
-        COLOR_WHITE,
-        "PS2DVDPlayer"
-    );
-
-
-    gsKit_fontm_print_scaled(
-        gsGlobal,
-        font,
-        245.0f,
-        82.0f,
-        2,
-        0.65f,
-        COLOR_WHITE,
-        "DVD ISO Player"
-    );
-
-
-    gsKit_prim_sprite(
-        gsGlobal,
-        170.0f,
-        130.0f,
-        470.0f,
-        325.0f,
-        2,
-        COLOR_PANEL
-    );
-
-
-    if (main_selected == 0)
+    for (i = 0; i < 3; i++)
     {
-        gsKit_prim_sprite(
-            gsGlobal,
-            195.0f,
-            155.0f,
-            445.0f,
-            200.0f,
-            3,
-            COLOR_SELECTED
-        );
+        float y = 124 + i * 64;
+
+        if (i == main_selected)
+        {
+            ui_vgradient(130, y, 380, 56, ui_rgba(0x2A, 0x66, 0xC8, 0x80), ui_rgba(0x16, 0x3C, 0x86, 0x80));
+            ui_border(130, y, 380, 56, 2, ui_rgba(0x7C, 0xB8, 0xFF, 0x80));
+        }
+
+        ui_text_scaled(150, y + 6, 1.3f, titles[i], UI_TEXT);
+        ui_text(150, y + 32, subtitles[i], i == main_selected ? UI_TEXT : UI_DIM);
     }
-    else if (main_selected == 1)
-    {
-        gsKit_prim_sprite(
-            gsGlobal,
-            195.0f,
-            205.0f,
-            445.0f,
-            250.0f,
-            3,
-            COLOR_SELECTED
-        );
-    }
-    else
-    {
-        gsKit_prim_sprite(
-            gsGlobal,
-            195.0f,
-            255.0f,
-            445.0f,
-            300.0f,
-            3,
-            COLOR_SELECTED
-        );
-    }
-
-
-    if (main_selected == 0)
-        usb_text = "> USB";
-
-    if (main_selected == 1)
-        hdd_text = "> HDD";
-
-    if (main_selected == 2)
-        smb_text = "> SMB";
-
-
-    gsKit_fontm_print_scaled(
-        gsGlobal,
-        font,
-        220.0f,
-        166.0f,
-        4,
-        0.75f,
-        COLOR_WHITE,
-        usb_text
-    );
-
-
-    gsKit_fontm_print_scaled(
-        gsGlobal,
-        font,
-        220.0f,
-        216.0f,
-        4,
-        0.75f,
-        COLOR_WHITE,
-        hdd_text
-    );
-
-
-    gsKit_fontm_print_scaled(
-        gsGlobal,
-        font,
-        220.0f,
-        266.0f,
-        4,
-        0.75f,
-        COLOR_WHITE,
-        smb_text
-    );
-
 
     /* USB/HDD: procurando ou erro */
     if (main_msg[0])
+        ui_text_center(320, 336, main_msg, main_msg_error ? UI_ERROR : UI_TEXT);
+
+    /* rodapé: botões à esquerda, rede à direita */
+    ui_rect(24, 430, 592, 2, UI_EDGE);
+    ui_button_hint(32, 442, UI_BTN_CROSS, "Selecionar");
+
+    net = network_get_info();
+
+    if (net && net->initialized)
     {
-        gsKit_fontm_print_scaled(
-            gsGlobal,
-            font,
-            175.0f,
-            332.0f,
-            4,
-            0.40f,
-            main_msg_error ? COLOR_ERROR : COLOR_WHITE,
-            main_msg
-        );
+        ui_rect(468, 448, 8, 8, net->link_up ? UI_OK : UI_ERROR);
+        ui_text_right(608, 442, net->link_up ? "Rede: Conectada" : "Rede: Desconectada",
+                      net->link_up ? UI_OK : UI_ERROR);
     }
-
-
-    {
-        const NetworkInfo *net;
-
-        net = network_get_info();
-
-        if (net && net->initialized)
-        {
-            gsKit_fontm_print_scaled(
-                gsGlobal,
-                font,
-                195.0f,
-                355.0f,
-                2,
-                0.45f,
-                net->link_up
-                    ? COLOR_OK
-                    : COLOR_ERROR,
-                net->link_up
-                    ? "Network: CONNECTED"
-                    : "Network: DISCONNECTED"
-            );
-        }
-        else
-        {
-            gsKit_fontm_print_scaled(
-                gsGlobal,
-                font,
-                195.0f,
-                355.0f,
-                2,
-                0.45f,
-                COLOR_ERROR,
-                "Network: NOT INITIALIZED"
-            );
-        }
-    }
-
-
-    gsKit_fontm_print_scaled(
-        gsGlobal,
-        font,
-        195.0f,
-        390.0f,
-        2,
-        0.45f,
-        COLOR_WHITE,
-        "UP/DOWN = Select"
-    );
-
-
-    gsKit_fontm_print_scaled(
-        gsGlobal,
-        font,
-        195.0f,
-        415.0f,
-        2,
-        0.45f,
-        COLOR_WHITE,
-        "CROSS = Enter"
-    );
+    else
+        ui_text_right(608, 442, "Rede: não iniciada", UI_ERROR);
 }
 
 
@@ -1593,7 +1463,8 @@ static void update_main(void)
 
     if (input_pressed(PAD_CROSS))
     {
-        if (main_selected == 2)
+        /* ordem do modelo: 0 = SMB, 1 = USB, 2 = HDD */
+        if (main_selected == 0)
         {
             const NetworkInfo *net;
 
@@ -1620,13 +1491,13 @@ static void update_main(void)
         else
         {
             /*
-             * USB (0) / HDD (1): pedido; a busca roda no próximo
-             * quadro, com "SEARCHING..." já na tela.
+             * USB (1) / HDD (2): pedido; a busca roda no próximo
+             * quadro, com "Procurando..." já na tela.
              */
-            main_bdm_kind = main_selected == 0 ? BDM_USB : BDM_HDD;
+            main_bdm_kind = main_selected == 1 ? BDM_USB : BDM_HDD;
             main_bdm_state = 1;
 
-            snprintf(main_msg, sizeof(main_msg), "Searching %s...",
+            snprintf(main_msg, sizeof(main_msg), "Procurando %s...",
                      bdm_kind_name(main_bdm_kind));
             main_msg_error = 0;
         }
@@ -3339,6 +3210,11 @@ static int csc_init(GSGLOBAL *gsGlobal)
     frame_logf("FRAME: GS color conversion, VRAM Y 0x%08x Cr 0x%08x Cb 0x%08x\n",
                (unsigned)vram_y, (unsigned)vram_cr, (unsigned)vram_cb);
 
+    /* quanto sobra da VRAM (4 MB) para a interface */
+    frame_logf("FRAME: VRAM pointer 0x%06x, %u KB free\n",
+               (unsigned)gsGlobal->CurrentPointer,
+               (unsigned)((0x400000 - gsGlobal->CurrentPointer) / 1024));
+
     csc_ready = 1;
     return 0;
 }
@@ -4748,6 +4624,17 @@ int main(
     gsKit_fontm_upload(
         gsGlobal,
         font
+    );
+
+
+    /*
+     * INTERFACE (fonte proporcional e botões; antes do vídeo alocar
+     * a VRAM da conversão de cor)
+     */
+
+    printf(
+        "MAIN: ui_init returned %d\n",
+        ui_init(gsGlobal)
     );
 
 

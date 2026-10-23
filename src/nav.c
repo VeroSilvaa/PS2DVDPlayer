@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <ctype.h>
 #include <string.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -702,11 +703,12 @@ static void audio_describe(char *out, int size, int index, int count,
 
     if (lang[index])
     {
-        code[0] = (char)(lang[index] >> 8);
-        code[1] = (char)(lang[index] & 0xff);
+        code[0] = (char)toupper(lang[index] >> 8);
+        code[1] = (char)toupper(lang[index] & 0xff);
     }
 
-    snprintf(out, size, "AUDIO %d/%d: AC3 %s (%s)", index + 1, count,
+    /* a barra do player lê "Áudio n/m" deste texto (main.c) */
+    snprintf(out, size, "Áudio %d/%d: AC3 %s (%s)", index + 1, count,
              ch >= 6 ? "5.1" : ch == 2 ? "2.0" : ch == 1 ? "mono" : "multi", code);
 }
 
@@ -743,7 +745,7 @@ int nav_audio_cycle(char *label, int size)
 
     if (count == 0)
     {
-        snprintf(label, size, "No AC3 audio track");
+        snprintf(label, size, "Sem faixa de áudio AC3");
         return 0;
     }
 
@@ -782,7 +784,7 @@ int nav_spu_count(char *label, int size)
 
     if (!nav || cur_domain() != DVD_DOMAIN_VTSTitle)
     {
-        snprintf(label, size, "NO SUBTITLES");
+        snprintf(label, size, "Sem legendas");
         return 0;
     }
 
@@ -798,11 +800,11 @@ int nav_spu_count(char *label, int size)
     }
 
     if (count == 0)
-        snprintf(label, size, "NO SUBTITLES");
+        snprintf(label, size, "Sem legendas");
     else
-        snprintf(label, size, "SUBTITLES: %d (%c%c) - NOT SUPPORTED YET", count,
-                 first != 0xffff ? (char)(first >> 8) : '?',
-                 first != 0xffff ? (char)(first & 0xff) : '?');
+        snprintf(label, size, "Legendas: %d (%c%c) - ainda não suportadas", count,
+                 first != 0xffff ? (char)toupper(first >> 8) : '?',
+                 first != 0xffff ? (char)toupper(first & 0xff) : '?');
 
     frame_logf("NAV: subtitles: %d track(s)\n", count);
     return count;

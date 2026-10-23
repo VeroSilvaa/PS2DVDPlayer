@@ -2663,62 +2663,62 @@ static void draw_bar_icon(GSGLOBAL *gsGlobal, int id, float cx, float cy, u64 c)
  */
 static void draw_play_bar(GSGLOBAL *gsGlobal, GSFONTM *font)
 {
-    /* nome do botão + atalho equivalente */
+    /* nome do botão e o atalho equivalente (ícone do kit) */
     static const char *names[BAR_COUNT] = {
-        "Previous  (L1)", "Play  (START)", "Next  (R1)", "Audio  (R2)", "Menu  (TRIANGLE)", "Stop  (CIRCLE)"
+        "Anterior", "Reproduzir", "Próximo", "Áudio", "Menu do disco", "Parar"
+    };
+    static const UiButton keys[BAR_COUNT] = {
+        UI_BTN_L1, UI_BTN_START, UI_BTN_R1, UI_BTN_R2, UI_BTN_TRIANGLE, UI_BTN_CIRCLE
     };
     char line[96];
-    char name[48];
+    char name[LIB_MAX_NAME];
     char t_now[16], t_total[16];
     u32 ms = 0, total = 0;
     int part = 0, parts = 0;
     int timed = frame_info.nav &&
                 nav_play_time(frame_info.pts, &ms, &total, &part, &parts);
-    u64 panel = GS_SETREG_RGBAQ(0x08, 0x0C, 0x18, 0x60, 0x00);
+    /* quase opaco: o vídeo atrás não pode competir com o texto */
+    u64 panel = ui_rgba(0x04, 0x0A, 0x1C, 0x74);
     float x;
     int i;
     char *dot;
 
+    (void)gsGlobal;
+    (void)font;
+
     if (timed && total > 0 && ms > total)
         ms = total;
 
-    gsGlobal->PrimAlphaEnable = GS_SETTING_ON;
-    gsKit_set_primalpha(gsGlobal, GS_SETREG_ALPHA(0, 1, 0, 1, 0), 0);
+    ui_rect(0, 0, 640, 44, panel);
+    ui_rect(0, 360, 640, 120, panel);
 
-    gsKit_prim_sprite(gsGlobal, 0.0f, 0.0f, 640.0f, 34.0f, 3, panel);
-    gsKit_prim_sprite(gsGlobal, 0.0f, 384.0f, 640.0f, 480.0f, 3, panel);
-
-    gsGlobal->PrimAlphaEnable = GS_SETTING_OFF;
-
-    /* nome da ISO sem a extensão (cortado para caber antes do tempo) */
-    snprintf(name, sizeof(name), "%.38s", iso_info_name);
+    /* nome da ISO sem a extensão */
+    snprintf(name, sizeof(name), "%s", iso_info_name);
     dot = strrchr(name, '.');
     if (dot)
         *dot = '\0';
-
-    gsKit_fontm_print_scaled(gsGlobal, font, 16.0f, 9.0f, 4, 0.38f, COLOR_WHITE, name);
 
     if (timed)
     {
         format_hms(t_now, sizeof(t_now), ms);
         format_hms(t_total, sizeof(t_total), total);
 
-        snprintf(line, sizeof(line), "Chapter %02d/%02d   %s / %s", part, parts, t_now, t_total);
-        gsKit_fontm_print_scaled(gsGlobal, font, 330.0f, 9.0f, 4, 0.38f, COLOR_WHITE, line);
+        snprintf(line, sizeof(line), "Capítulo %02d/%02d    %s / %s", part, parts, t_now, t_total);
+        ui_text_right(620, 8, line, UI_TEXT);
+        ui_text_fit(20, 8, 600 - ui_text_width(line) - 24, name, UI_ACCENT);
     }
+    else
+        ui_text_fit(20, 8, 600, name, UI_ACCENT);
 
     /* progresso */
-    gsKit_prim_sprite(gsGlobal, 20.0f, 396.0f, 620.0f, 402.0f, 4, COLOR_DISABLED);
+    ui_rect(20, 372, 600, 6, ui_rgba(0x30, 0x3C, 0x58, 0x80));
 
     if (timed && total > 0)
     {
         float fx = 20.0f + 600.0f * (float)ms / (float)total;
 
-        gsKit_prim_sprite(gsGlobal, 20.0f, 396.0f, fx, 402.0f, 4, COLOR_SELECTED);
-        gsKit_prim_sprite(gsGlobal, fx - 4.0f, 392.0f, fx + 4.0f, 406.0f, 4, COLOR_WHITE);
-
-        gsKit_fontm_print_scaled(gsGlobal, font, 20.0f, 410.0f, 4, 0.34f, COLOR_WHITE, t_now);
-        gsKit_fontm_print_scaled(gsGlobal, font, 548.0f, 410.0f, 4, 0.34f, COLOR_WHITE, t_total);
+        ui_rect(20, 372, fx - 20, 6, ui_rgba(0x3C, 0x8C, 0xFF, 0x80));
+        ui_rect(fx - 5, 367, 10, 16, UI_TEXT);
     }
 
     /* o botão escolhido pode ter sumido (ex.: título com uma faixa) */
@@ -2733,49 +2733,58 @@ static void draw_play_bar(GSGLOBAL *gsGlobal, GSFONTM *font)
         if (!bar_has(i))
             continue;
 
-        gsKit_prim_sprite(gsGlobal, x, 432.0f, x + 50.0f, 464.0f, 4,
-                          sel ? COLOR_SELECTED : COLOR_PANEL);
+        if (sel)
+        {
+            ui_vgradient(x, 388, 46, 34, ui_rgba(0x2A, 0x66, 0xC8, 0x80), ui_rgba(0x16, 0x3C, 0x86, 0x80));
+            ui_border(x, 388, 46, 34, 2, ui_rgba(0x7C, 0xB8, 0xFF, 0x80));
+        }
+        else
+        {
+            ui_rect(x, 388, 46, 34, ui_rgba(0x10, 0x20, 0x42, 0x80));
+            ui_border(x, 388, 46, 34, 2, UI_EDGE);
+        }
 
-        draw_bar_icon(gsGlobal, i, x + 25.0f, 448.0f, sel ? COLOR_WHITE : COLOR_DISABLED);
+        draw_bar_icon(gsGlobal, i, x + 23.0f, 405.0f, sel ? COLOR_WHITE : COLOR_DISABLED);
 
-        x += 58.0f;
+        x += 52.0f;
     }
 
+    /* à direita: o botão escolhido com o atalho */
+    x += 10;
     snprintf(line, sizeof(line), "%s", names[play_bar_sel]);
 
     if (play_bar_sel == BAR_PLAY && frame_state != 6)
-        snprintf(line, sizeof(line), "Pause  (START)");
+        snprintf(line, sizeof(line), "Pausar");
 
-    /* Audio: idioma/formato da faixa atual, ex. "pt 5.1 - 2/2" */
+    /* Áudio: formato e idioma da faixa atual, ex. "Áudio: AC3 5.1 (PT) 2/2" */
     if (play_bar_sel == BAR_AUDIO)
     {
         char track[48];
-        char code[3] = { 0 };
-        const char *fmt;
         int cur = 0, count = 0;
 
         if (nav_audio_info(track, sizeof(track)) > 0 &&
-            sscanf(track, "AUDIO %d/%d", &cur, &count) == 2)
+            sscanf(track, "\xC3\x81udio %d/%d", &cur, &count) == 2)
         {
-            char *paren = strchr(track, '(');
+            const char *desc = strchr(track, ':');
 
-            if (paren && paren[1] && paren[2])
-            {
-                code[0] = paren[1];
-                code[1] = paren[2];
-            }
-
-            fmt = strstr(track, "5.1") ? "5.1" : strstr(track, "2.0") ? "2.0" :
-                  strstr(track, "mono") ? "mono" : "";
-
-            snprintf(line, sizeof(line), "Audio (R2): %s %s - %d/%d", code, fmt, cur, count);
+            snprintf(line, sizeof(line), "Áudio:%s  %d/%d", desc ? desc + 1 : "", cur, count);
         }
     }
 
-    /* à direita dos botões (com os 6, o último termina em x = 360) */
-    gsKit_fontm_print_scaled(gsGlobal, font, 376.0f, 434.0f, 4, 0.40f, COLOR_WHITE, line);
-    gsKit_fontm_print_scaled(gsGlobal, font, 376.0f, 452.0f, 4, 0.32f, COLOR_DISABLED,
-                             "LEFT/RIGHT=Choose  CROSS=OK  SELECT=Hide");
+    ui_button_hint(x, 391, keys[play_bar_sel], line);
+
+    /* tempos e ajuda */
+    if (timed && total > 0)
+    {
+        ui_text(20, 428, t_now, UI_DIM);
+        ui_text_right(620, 428, t_total, UI_DIM);
+    }
+
+    x = 140;
+    x += ui_button_hint(x, 448, UI_BTN_LEFT, "");
+    x += ui_button_hint(x - 18, 448, UI_BTN_RIGHT, "Escolher") - 18;
+    x += ui_button_hint(x, 448, UI_BTN_CROSS, "OK");
+    ui_button_hint(x, 448, UI_BTN_SELECT, "Ocultar");
 }
 
 
@@ -2838,14 +2847,9 @@ static void draw_frame(
 
     if (frame_state < 0)
     {
-        gsKit_fontm_print_scaled(gsGlobal, font, 60.0f, 200.0f, 3, 0.45f, COLOR_ERROR, "VIDEO ERROR");
-
-        gsKit_fontm_print_scaled(
-            gsGlobal, font, 60.0f, 230.0f, 3, 0.40f, COLOR_ERROR,
-            frame_info.error[0] ? frame_info.error : "unknown"
-        );
-
-        gsKit_fontm_print_scaled(gsGlobal, font, 60.0f, 430.0f, 3, 0.38f, COLOR_WHITE, "CIRCLE=Back");
+        ui_text_f(UI_FONT_LARGE, 60, 190, "Erro no vídeo", UI_ERROR);
+        ui_text_fit(60, 236, 520, frame_info.error[0] ? frame_info.error : "erro desconhecido", UI_ERROR);
+        ui_button_hint(60, 430, UI_BTN_CIRCLE, "Voltar");
         return;
     }
 
@@ -2906,23 +2910,24 @@ static void draw_frame(
      */
 
     if (frame_state == 1)
-        gsKit_fontm_print_scaled(gsGlobal, font, 200.0f, 220.0f, 3, 0.48f, COLOR_WHITE, "OPENING VIDEO...");
+        ui_text_center_f(UI_FONT_LARGE, 320, 220, "Abrindo vídeo...", UI_TEXT);
     /* frame_state 5 (enchendo o buffer após um salto): sem texto, só no log */
     else if (frame_state == 6)
-        gsKit_fontm_print_scaled(gsGlobal, font, 260.0f, 220.0f, 3, 0.55f, COLOR_WHITE, "PAUSED");
+        ui_text_center_f(UI_FONT_LARGE, 320, 220, "Pausado", UI_TEXT);
     else if (frame_state == 4)
     {
         /* fim da reprodução (vídeo direto ou navegação parada: NAV STOP) */
-        gsKit_fontm_print_scaled(gsGlobal, font, 230.0f, 220.0f, 3, 0.50f, COLOR_WHITE, "END OF VIDEO");
+        ui_text_center_f(UI_FONT_LARGE, 320, 220, "Fim do vídeo", UI_TEXT);
     }
 
-    /* aviso (capítulo/áudio) alinhado à direita: ~8,5 px por caractere em 0.45 */
+    /* aviso (capítulo/áudio/legendas) no canto direito, abaixo da barra de cima */
     if (play_osd_until && GetTimerSystemTime() < play_osd_until)
     {
-        float ox = 625.0f - 8.5f * (float)strlen(play_osd);
+        float w = (float)ui_text_width(play_osd) + 24;
 
-        gsKit_fontm_print_scaled(gsGlobal, font, ox < 20.0f ? 20.0f : ox, 40.0f, 4, 0.45f,
-                                 COLOR_WHITE, play_osd);
+        ui_rect(620 - w, 52, w, 32, ui_rgba(0x04, 0x0A, 0x1C, 0x60));
+        ui_border(620 - w, 52, w, 32, 2, UI_EDGE);
+        ui_text_right(608, 54, play_osd, UI_TEXT);
     }
 
     /* sem ajuda fixa sobre o vídeo: os atalhos aparecem na barra (SELECT) */
@@ -3024,7 +3029,7 @@ static int play_chapter(int delta, u64 now)
 
     if (nav_chapter_info(&part, &parts))
     {
-        snprintf(play_osd, sizeof(play_osd), "CHAPTER %d/%d", part, parts);
+        snprintf(play_osd, sizeof(play_osd), "Capítulo %d/%d", part, parts);
         play_osd_until = now + (u64)kBUSCLK * 2;
     }
 

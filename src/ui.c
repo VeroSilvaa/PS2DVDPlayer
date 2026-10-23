@@ -628,3 +628,120 @@ void ui_icon(UiIcon icon, float x, float y, float size)
         case UI_ICON_HDD:     icon_hdd(x, y, size); break;
     }
 }
+
+
+/* ============================================================
+ * Capa (textura temporária)
+ * ============================================================ */
+
+static GSTEXTURE cover;
+static int cover_ok = 0;
+static u32 cover_saved_ptr = 0;
+
+
+void ui_cover_free(void)
+{
+    if (!cover_ok)
+        return;
+
+    /* a capa foi a última alocação: o ponteiro volta para antes dela */
+    gs->CurrentPointer = cover_saved_ptr;
+
+    if (cover.Mem)
+        free(cover.Mem);
+
+    memset(&cover, 0, sizeof(cover));
+    cover_ok = 0;
+}
+
+
+int ui_cover_set(const unsigned char *rgba, int w, int h)
+{
+    /* pontilhado 4x4 (Bayer), em 1/8 do passo de 5 bits */
+    static const int bayer[4][4] = {
+        {  0,  8,  2, 10 },
+        { 12,  4, 14,  6 },
+        {  3, 11,  1,  9 },
+        { 15,  7, 13,  5 }
+    };
+    u16 *px;
+    int x, y;
+
+    ui_cover_free();
+
+    px = memalign(128, w * h * 2);
+
+    if (!px)
+        return -1;
+
+    for (y = 0; y < h; y++)
+    {
+        for (x = 0; x < w; x++)
+        {
+            const unsigned char *s = rgba + (y * w + x) * 4;
+            int d = bayer[y & 3][x & 3] / 2;     /* 0..7 */
+            int r = s[0] + d, g = s[1] + d, b = s[2] + d;
+
+            r = r > 255 ? 255 : r;
+            g = g > 255 ? 255 : g;
+            b = b > 255 ? 255 : b;
+
+            px[y * w + x] = (u16)((r >> 3) | ((g >> 3) << 5) | ((b >> 3) << 10) | 0x8000);
+        }
+    }
+
+    cover_saved_ptr = gs->CurrentPointer;
+
+    memset(&cover, 0, sizeof(cover));
+    cover.Width = w;
+    cover.Height = h;
+    cover.PSM = GS_PSM_CT16;
+    cover.Mem = (u32 *)px;
+    cover.Filter = GS_FILTER_LINEAR;
+    cover.Vram = gsKit_vram_alloc(gs, gsKit_texture_size(w, h, GS_PSM_CT16), GSKIT_ALLOC_USERBUFFER);
+
+    if (cover.Vram == GSKIT_ALLOC_ERROR)
+    {
+        gs->CurrentPointer = cover_saved_ptr;
+        free(px);
+        memset(&cover, 0, sizeof(cover));
+        printf("UI: cover %dx%d does not fit in VRAM\n", w, h);
+        return -2;
+    }
+
+    FlushCache(0);
+    gsKit_texture_upload(gs, &cover);
+    cover_ok = 1;
+
+    printf("UI: cover %dx%d CT16 at 0x%06x, VRAM pointer 0x%06x\n",
+           w, h, (unsigned)cover.Vram, (unsigned)gs->CurrentPointer);
+
+    return 0;
+}
+
+
+int ui_cover(float x, float y, float w, float h)
+{
+    float s, dw, dh;
+
+    if (!cover_ok)
+        return 0;
+
+    /* cabe na caixa sem distorcer */
+    s = w / cover.Width;
+
+    if (h / cover.Height < s)
+        s = h / cover.Height;
+
+    dw = cover.Width * s;
+    dh = cover.Height * s;
+    x += (w - dw) / 2;
+    y += (h - dh) / 2;
+
+    gsKit_prim_sprite_texture(gs, &cover,
+                              x, y, 0, 0,
+                              x + dw, y + dh, cover.Width, cover.Height,
+                              Z_UI, TEX_WHITE);
+
+    return 1;
+}

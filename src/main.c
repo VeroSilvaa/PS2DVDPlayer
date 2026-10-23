@@ -26,6 +26,7 @@
 #include "bdm.h"
 #include "ui.h"
 #include "osk.h"
+#include "cover.h"
 #include "iop_boot.h"
 
 /* ============================================================
@@ -1956,6 +1957,9 @@ static void update_iso_list(void)
                 &iso_info
             );
 
+        /* capa em ART/<nome>.png (só enquanto os detalhes estão na tela) */
+        cover_load(lib_dir, iso_info_name);
+
 
         printf(
             "ISO LIST: iso_identify returned %d\n",
@@ -2002,7 +2006,7 @@ static void update_iso_list(void)
  * ============================================================ */
 
 /* Botões da tela de detalhes (tela 6 do modelo). */
-enum { INFO_PLAY = 0, INFO_MAIN_TITLE, INFO_BACK, INFO_BUTTONS };
+enum { INFO_PLAY = 0, INFO_BACK, INFO_BUTTONS };
 
 static int info_sel = INFO_PLAY;
 
@@ -2073,11 +2077,15 @@ static void draw_iso_info(
 
     ui_screen_begin(gsGlobal, "DETALHES DO FILME");
 
-    /* "capa": sem arte no DVD, um disco grande no lugar */
+    /*
+     * Capa: ART/<nome da ISO>.png ao lado da pasta dos filmes
+     * (160 x 224 px; ver cover.h). Sem ela, só o disco.
+     */
     ui_rect(40, 116, 180, 230, UI_PANEL);
     ui_border(40, 116, 180, 230, 2, UI_EDGE);
-    ui_icon(UI_ICON_DISC, 60, 160, 140);
-    ui_text_center(130, 312, info_playable() ? "DVD-Video" : "ISO", UI_DIM);
+
+    if (!ui_cover(44, 120, 172, 222))
+        ui_icon(UI_ICON_DISC, 60, 161, 140);
 
     /* nome */
     ui_text_fit(236, 116, 366, iso_info_name, UI_ACCENT);
@@ -2146,9 +2154,8 @@ static void draw_iso_info(
         ui_text_fit(236, y, 366, iso_info.error, UI_ERROR);
 
     /* botões */
-    info_button(322, "Reproduzir", info_sel == INFO_PLAY, info_playable());
-    info_button(356, "Título principal", info_sel == INFO_MAIN_TITLE, info_playable());
-    info_button(390, "Voltar", info_sel == INFO_BACK, 1);
+    info_button(346, "Reproduzir", info_sel == INFO_PLAY, info_playable());
+    info_button(384, "Voltar", info_sel == INFO_BACK, 1);
 
     /* rodapé */
     ui_footer_line();
@@ -2169,6 +2176,9 @@ static void info_play(int from_start)
      */
     play_from_start = from_start && iso_info.start_bytes;
 
+    /* a VRAM da capa volta antes de o vídeo alocar a dele */
+    ui_cover_free();
+
     frame_state = 1;
     current_screen = SCREEN_FRAME;
 
@@ -2182,6 +2192,7 @@ static void update_iso_info(void)
     if (input_pressed(PAD_CIRCLE))
     {
         info_sel = INFO_PLAY;
+        ui_cover_free();
         current_screen = SCREEN_ISO_LIST;
         return;
     }
@@ -2192,23 +2203,17 @@ static void update_iso_info(void)
     if (input_pressed(PAD_DOWN))
         info_sel = (info_sel + 1) % INFO_BUTTONS;
 
-    /* QUADRADO: atalho para o título principal */
-    if (info_playable() && input_pressed(PAD_SQUARE))
-    {
-        info_play(0);
-        return;
-    }
-
     if (!input_pressed(PAD_CROSS))
         return;
 
     if (info_sel == INFO_BACK)
     {
         info_sel = INFO_PLAY;
+        ui_cover_free();
         current_screen = SCREEN_ISO_LIST;
     }
     else if (info_playable())
-        info_play(info_sel == INFO_PLAY);
+        info_play(1);
 }
 
 
@@ -3012,6 +3017,9 @@ static void play_stop(void)
     play_bar = 0;
     frame_state = 0;
     current_screen = SCREEN_ISO_INFO;
+
+    /* de volta aos detalhes: a capa volta (depois da VRAM do vídeo) */
+    cover_load(lib_dir, iso_info_name);
 }
 
 

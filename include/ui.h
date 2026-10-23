@@ -88,6 +88,18 @@ void ui_text_fit(float x, float y, float max_w, const char *text, u64 color);
 int ui_logo(float x, float y);
 
 /*
+ * Capa do filme: textura temporária, no topo da VRAM. rgba (8 bits por
+ * canal, w x h) vira CT16 com pontilhado (metade da VRAM do RGBA).
+ * ui_cover_free devolve a VRAM (chamar antes do vídeo alocar a dele):
+ * nada pode ser alocado na VRAM entre o set e o free.
+ */
+int ui_cover_set(const unsigned char *rgba, int w, int h);
+void ui_cover_free(void);
+
+/* Desenha a capa centrada em (x, y, w, h), sem distorcer. 0 se não há. */
+int ui_cover(float x, float y, float w, float h);
+
+/*
  * Ícone do botão + rótulo (rodapé). Devolve a largura usada
  * (incluindo o espaço até o próximo par).
  */

@@ -9,6 +9,7 @@
 #include <io_common.h>
 #include <fileXio_rpc.h>
 
+#include "dbglog.h"
 #include "cover.h"
 #include "pngload.h"
 #include "ui.h"

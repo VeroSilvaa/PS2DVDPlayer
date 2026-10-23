@@ -7,6 +7,7 @@
 #include <kernel.h>
 #include <libpad.h>
 
+#include "dbglog.h"
 #include "input.h"
 
 #define PAD_PORT 0

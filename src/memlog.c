@@ -2,6 +2,7 @@
 #include <malloc.h>
 #include <unistd.h>
 
+#include "dbglog.h"
 #include "memlog.h"
 
 /*

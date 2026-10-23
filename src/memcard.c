@@ -5,6 +5,7 @@
 #include <loadfile.h>
 #include <libmc.h>
 
+#include "dbglog.h"
 #include "memcard.h"
 
 static int memcardReady;

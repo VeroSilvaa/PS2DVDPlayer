@@ -10,6 +10,7 @@
 #include <fileXio_rpc.h>
 #include <ps2smb.h>
 
+#include "dbglog.h"
 #include "smb.h"
 #include "io_modules.h"
 

@@ -9,6 +9,7 @@
 #define NEWLIB_PORT_AWARE
 #include <io_common.h>
 
+#include "dbglog.h"
 #include "netcfg.h"
 #include "memcard.h"
 

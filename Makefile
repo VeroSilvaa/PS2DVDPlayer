@@ -22,6 +22,7 @@ EE_OBJS = \
 	build/ui.o \
 	build/osk.o \
 	build/cover.o \
+	build/dbglog.o \
 	build/pngload.o \
 	build/font_body_png.o \
 	build/font_large_png.o \
@@ -252,6 +253,11 @@ build/cover.o: src/cover.c
 	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) \
 		-I$(GSKIT)/include \
 		-I$(GSKIT)/ee/dma/include \
+		-c $< -o $@
+
+build/dbglog.o: src/dbglog.c include/dbglog.h
+	@mkdir -p $(@D)
+	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) \
 		-c $< -o $@
 
 build/pngload.o: src/pngload.c

@@ -8,6 +8,7 @@
 #include <kernel.h>
 #include <gsKit.h>
 
+#include "dbglog.h"
 #include "ui.h"
 #include "pngload.h"
 #include "font_body.h"

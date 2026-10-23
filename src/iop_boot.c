@@ -6,6 +6,7 @@
 #include <iopcontrol.h>
 #include <sbv_patches.h>
 
+#include "dbglog.h"
 #include "iop_boot.h"
 
 

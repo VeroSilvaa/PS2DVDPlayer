@@ -15,6 +15,7 @@
 
 #include <dvdnav/dvdnav.h>
 
+#include "dbglog.h"
 #include "nav.h"
 #include "frame.h"
 #include "memlog.h"

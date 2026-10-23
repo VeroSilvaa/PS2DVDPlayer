@@ -11,6 +11,7 @@
 #include <gsToolkit.h>
 #include <libpad.h>
 
+#include "dbglog.h"
 #include "smb.h"
 #include "iso.h"
 #include "frame.h"
@@ -4162,6 +4163,25 @@ int main(
          */
         if (current_screen != SCREEN_FRAME)
             network_update();
+
+#if DBGLOG_ENABLED
+        /*
+         * Log de depuração no SMB (smb0:/LOGS), a cada ~2 s e nunca
+         * durante o vídeo: o fileXio e a rede ficam com o filme.
+         * Desligado por enquanto (dbglog.h).
+         */
+        if (current_screen != SCREEN_FRAME)
+        {
+            static u64 dbglog_last = 0;
+            u64 now = GetTimerSystemTime();
+
+            if (now - dbglog_last > (u64)kBUSCLK * 2)
+            {
+                dbglog_last = now;
+                dbglog_flush();
+            }
+        }
+#endif
 
         /*
          * Aguarda DHCP/link.

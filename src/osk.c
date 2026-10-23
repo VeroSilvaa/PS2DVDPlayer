@@ -5,6 +5,7 @@
 #include <timer.h>
 #include <libpad.h>
 
+#include "dbglog.h"
 #include "osk.h"
 #include "ui.h"
 

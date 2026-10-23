@@ -12,6 +12,7 @@
 
 #include <a52.h>
 
+#include "dbglog.h"
 #include "audio.h"
 #include "frame.h"
 

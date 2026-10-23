@@ -11,6 +11,7 @@
 #include <fileXio_rpc.h>
 #include <io_common.h>
 
+#include "dbglog.h"
 #include "iso.h"
 
 /*

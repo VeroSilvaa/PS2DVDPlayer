@@ -7,6 +7,7 @@
 #define NEWLIB_PORT_AWARE
 #include <fileXio_rpc.h>
 
+#include "dbglog.h"
 #include "io_modules.h"
 
 extern unsigned char IOMANX_irx[];

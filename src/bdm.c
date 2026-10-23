@@ -11,6 +11,7 @@
 #include <io_common.h>
 #include <fileXio_rpc.h>
 
+#include "dbglog.h"
 #include "bdm.h"
 #include "io_modules.h"
 

@@ -226,7 +226,7 @@ int smb_init(void)
     if (result < 0)
     {
         smb_set_error(
-            "IOMANX/FILEXIO init failed",
+            "Falha ao iniciar IOMANX/FILEXIO",
             result
         );
 
@@ -267,7 +267,7 @@ int smb_init(void)
         if (result < 0)
         {
             smb_set_error(
-                "SMBMAN load failed",
+                "Falha ao carregar o SMBMAN",
                 result
             );
 
@@ -316,7 +316,7 @@ int smb_connect(
     if (!smbInfo.initialized)
     {
         smb_set_error(
-            "SMB not initialized",
+            "SMB não iniciado",
             0
         );
 
@@ -332,7 +332,7 @@ int smb_connect(
     )
     {
         smb_set_error(
-            "Invalid SMB parameters",
+            "Parâmetros SMB inválidos",
             0
         );
 
@@ -501,7 +501,7 @@ int smb_connect(
         )
         {
             smb_set_error(
-                "LOGON: server connection failed",
+                "Sem conexão com o servidor",
                 result
             );
         }
@@ -511,7 +511,7 @@ int smb_connect(
         )
         {
             smb_set_error(
-                "LOGON: protocol error",
+                "Erro de protocolo SMB",
                 result
             );
         }
@@ -521,14 +521,14 @@ int smb_connect(
         )
         {
             smb_set_error(
-                "LOGON: authentication failed",
+                "Usuário ou senha recusados",
                 result
             );
         }
         else
         {
             smb_set_error(
-                "SMB LOGON failed",
+                "Falha no login SMB",
                 result
             );
         }
@@ -592,7 +592,7 @@ int smb_connect(
     if (result < 0)
     {
         smb_set_error(
-            "SMB ECHO failed",
+            "O servidor não respondeu",
             result
         );
 
@@ -652,7 +652,7 @@ int smb_connect(
     if (result < 0)
     {
         smb_set_error(
-            "SMB OPENSHARE failed",
+            "Compartilhamento não encontrado ou sem acesso",
             result
         );
 
@@ -756,7 +756,7 @@ int smb_list_dvd(const char *folder)
     )
     {
         smb_set_error(
-            "SMB share is not open",
+            "Compartilhamento não está aberto",
             0
         );
 
@@ -833,7 +833,7 @@ int smb_list_dvd(const char *folder)
         if (result < 0)
         {
             smb_set_error(
-                "fileXioDread failed",
+                "Erro ao ler a pasta",
                 result
             );
 

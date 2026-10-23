@@ -564,8 +564,7 @@ static void ui_footer_line(void)
 
 
 static void draw_main(
-    GSGLOBAL *gsGlobal,
-    GSFONTM *font
+    GSGLOBAL *gsGlobal
 )
 {
     /* ordem do modelo (tela 1) */
@@ -579,7 +578,6 @@ static void draw_main(
     const NetworkInfo *net;
     int i;
 
-    (void)font;
 
     ui_screen_begin(gsGlobal, "DVD ISO PLAYER - PLAYSTATION 2");
 
@@ -739,8 +737,7 @@ static void smb_secret(char *out, int size, const char *password)
 
 
 static void draw_smb(
-    GSGLOBAL *gsGlobal,
-    GSFONTM *font
+    GSGLOBAL *gsGlobal
 )
 {
     static const char *labels[SMB_ITEM_APPLY] = {
@@ -757,7 +754,6 @@ static void draw_smb(
     float x, y;
     int item, rows = 0;
 
-    (void)font;
 
     ui_screen_begin(gsGlobal, "CONFIGURAÇÃO SMB");
 
@@ -1353,7 +1349,7 @@ static void smb_test(void)
             snprintf(
                 smb_error_line,
                 sizeof(smb_error_line),
-                "INIT: %.120s",
+                "%.120s",
                 info->error
             );
         }
@@ -1812,7 +1808,7 @@ static void smb_wait_network_update(void)
         snprintf(
             smb_error_line,
             sizeof(smb_error_line),
-            "NETWORK: timeout waiting for IP"
+            "Tempo esgotado esperando o endereço IP"
         );
     }
 }
@@ -1846,15 +1842,13 @@ static void format_size(
 
 
 static void draw_iso_list(
-    GSGLOBAL *gsGlobal,
-    GSFONTM *font
+    GSGLOBAL *gsGlobal
 )
 {
     char line[LIB_DIR_MAX + 32];
     float x;
     int i;
 
-    (void)font;
 
     /* subtítulo: fonte + pasta (lib_label, ex. "USB usb0:  /FILMES") */
     ui_screen_begin(gsGlobal, lib_label);
@@ -2064,8 +2058,7 @@ static void info_button(float y, const char *label, int selected, int enabled)
 
 
 static void draw_iso_info(
-    GSGLOBAL *gsGlobal,
-    GSFONTM *font
+    GSGLOBAL *gsGlobal
 )
 {
     char line[160];
@@ -2073,7 +2066,6 @@ static void draw_iso_info(
     float y;
     int i;
 
-    (void)font;
 
     ui_screen_begin(gsGlobal, "DETALHES DO FILME");
 
@@ -2666,7 +2658,7 @@ static void draw_bar_icon(GSGLOBAL *gsGlobal, int id, float cx, float cy, u64 c)
  * Barra do player (tela 10 do modelo): título, capítulo e tempo em
  * cima; progresso e botões embaixo.
  */
-static void draw_play_bar(GSGLOBAL *gsGlobal, GSFONTM *font)
+static void draw_play_bar(GSGLOBAL *gsGlobal)
 {
     /* nome do botão e o atalho equivalente (ícone do kit) */
     static const char *names[BAR_COUNT] = {
@@ -2689,7 +2681,6 @@ static void draw_play_bar(GSGLOBAL *gsGlobal, GSFONTM *font)
     char *dot;
 
     (void)gsGlobal;
-    (void)font;
 
     if (timed && total > 0 && ms > total)
         ms = total;
@@ -2794,8 +2785,7 @@ static void draw_play_bar(GSGLOBAL *gsGlobal, GSFONTM *font)
 
 
 static void draw_frame(
-    GSGLOBAL *gsGlobal,
-    GSFONTM *font
+    GSGLOBAL *gsGlobal
 )
 {
     gsKit_clear(
@@ -2937,7 +2927,7 @@ static void draw_frame(
 
     /* sem ajuda fixa sobre o vídeo: os atalhos aparecem na barra (SELECT) */
     if (play_bar)
-        draw_play_bar(gsGlobal, font);
+        draw_play_bar(gsGlobal);
 }
 
 
@@ -3784,7 +3774,6 @@ int main(
 )
 {
     GSGLOBAL *gsGlobal;
-    GSFONTM *font;
 
     int iop_result;
 
@@ -4008,37 +3997,6 @@ int main(
 
 
     /*
-     * FONT
-     */
-
-    printf(
-        "MAIN: initializing font...\n"
-    );
-
-
-    font =
-        gsKit_init_fontm();
-
-
-    if (!font)
-    {
-        printf(
-            "MAIN: ERROR FontM\n"
-        );
-
-        while (1)
-        {
-        }
-    }
-
-
-    gsKit_fontm_upload(
-        gsGlobal,
-        font
-    );
-
-
-    /*
      * INTERFACE (fonte proporcional e botões; antes do vídeo alocar
      * a VRAM da conversão de cor)
      */
@@ -4128,8 +4086,7 @@ int main(
      */
 
     draw_main(
-        gsGlobal,
-        font
+        gsGlobal
     );
 
 
@@ -4267,8 +4224,7 @@ int main(
         )
         {
             draw_main(
-                gsGlobal,
-                font
+                gsGlobal
             );
         }
         else if (
@@ -4277,8 +4233,7 @@ int main(
         )
         {
             draw_iso_list(
-                gsGlobal,
-                font
+                gsGlobal
             );
         }
         else if (
@@ -4287,8 +4242,7 @@ int main(
         )
         {
             draw_iso_info(
-                gsGlobal,
-                font
+                gsGlobal
             );
         }
         else if (
@@ -4297,15 +4251,13 @@ int main(
         )
         {
             draw_frame(
-                gsGlobal,
-                font
+                gsGlobal
             );
         }
         else
         {
             draw_smb(
-                gsGlobal,
-                font
+                gsGlobal
             );
         }
 

@@ -2871,8 +2871,8 @@ static void draw_iso_info(
             385.0f,
             2,
             0.40f,
-            COLOR_DISABLED,
-            "Playback not implemented yet"
+            COLOR_WHITE,
+            "Ready to play"
         );
     }
     else
@@ -3638,8 +3638,8 @@ static void draw_frame(
     }
 
     /*
-     * Menu do DVD: contorno no botão selecionado (provisório; o
-     * destaque do disco vem do subpicture, ainda não decodificado).
+     * Menu do DVD: destaque original do disco (subpicture); se não
+     * houver, contorno no botão selecionado.
      */
     if (frame_tex_ready && frame_info.frames > 0 && draw_spu_overlay(gsGlobal))
     {
@@ -3691,7 +3691,7 @@ static void draw_frame(
     }
 
     /*
-     * Navegação: still e menu (os botões ainda não respondem).
+     * Navegação: still e número de botões do menu.
      */
     if (frame_info.nav && frame_state == 2 && !play_bar)
     {
@@ -3725,14 +3725,8 @@ static void draw_frame(
         gsKit_fontm_print_scaled(gsGlobal, font, 260.0f, 220.0f, 3, 0.55f, COLOR_WHITE, "PAUSED");
     else if (frame_state == 4)
     {
-        /*
-         * Menu: a imagem fica na tela (botões ainda não funcionam).
-         */
-        if (play_from_start && iso_info.fp_menu)
-            gsKit_fontm_print_scaled(gsGlobal, font, 20.0f, 432.0f, 3, 0.36f, COLOR_OK,
-                                     "DISC MENU - buttons not implemented yet");
-        else
-            gsKit_fontm_print_scaled(gsGlobal, font, 230.0f, 220.0f, 3, 0.50f, COLOR_WHITE, "END OF VIDEO");
+        /* fim da reprodução (vídeo direto ou navegação parada: NAV STOP) */
+        gsKit_fontm_print_scaled(gsGlobal, font, 230.0f, 220.0f, 3, 0.50f, COLOR_WHITE, "END OF VIDEO");
     }
 
     if (play_osd_until && GetTimerSystemTime() < play_osd_until)

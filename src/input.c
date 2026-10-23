@@ -152,7 +152,17 @@ void input_update(void)
 
     if (!result)
     {
+        /*
+         * Sem leitura neste quadro: limpar os eventos, senão o botão
+         * do quadro anterior conta como apertado de novo (o X da tela
+         * SMB repetia a conexão a cada volta do loop).
+         */
         inputState.connected = 0;
+
+        inputState.buttons = 0;
+        inputState.pressed = 0;
+        inputState.released = 0;
+
         return;
     }
 

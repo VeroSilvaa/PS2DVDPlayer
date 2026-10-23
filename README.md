@@ -146,6 +146,20 @@ Um log de depuração gravado no próprio compartilhamento SMB
 | `src/cover.c` | capas (PNG) |
 | `tools/make_assets.py` | gera fontes, logo e botões de `assets/` |
 
+## Apoie o projeto
+
+Se o PS2DVDPlayer foi útil para você, considere apoiar o desenvolvimento com uma doação via **Pix** (qualquer valor):
+
+<img src="docs/pix-qrcode.png" alt="QR Code Pix para doação" width="220">
+
+**Pix copia e cola:**
+
+```
+00020126580014BR.GOV.BCB.PIX01362c7f2bbb-2b6b-4b41-8b5c-b47a222531d65204000053039865802BR5915VERIDIANO SILVA6008REDENCAO62070503***6304DD08
+```
+
+Chave aleatória: `2c7f2bbb-2b6b-4b41-8b5c-b47a222531d6` (Veridiano Silva)
+
 ## Licença
 
 **GPL-2.0-or-later** (arquivo [`LICENSE`](LICENSE)).

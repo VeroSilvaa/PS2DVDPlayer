@@ -6,6 +6,11 @@
 #define HDD_MAX_FILES 64
 #define HDD_MAX_NAME  128
 
+/*
+ * Pasta das ISOs de filmes na partição +PS2DVDPLAYER.
+ */
+#define HDD_DVD_PATH "pfs0:/FILMES"
+
 typedef struct
 {
     char name[HDD_MAX_NAME];
@@ -54,7 +59,7 @@ int hdd_mount(void);
 /*
  * Garante que:
  *
- * pfs0:/DVD
+ * HDD_DVD_PATH
  *
  * exista.
  *
@@ -65,7 +70,7 @@ int hdd_ensure_dvd_directory(void);
 /*
  * Lista arquivos .iso de:
  *
- * pfs0:/DVD
+ * HDD_DVD_PATH
  */
 int hdd_list_dvd(void);
 

@@ -379,7 +379,7 @@ int hdd_mount(void)
      * FIO_MT_RDWR = 0x00
      *
      * Precisamos de escrita neste momento para
-     * poder criar pfs0:/DVD.
+     * poder criar HDD_DVD_PATH.
      */
 
     result = fileXioMount(
@@ -425,7 +425,7 @@ int hdd_mount(void)
 
 /*
  * ------------------------------------------------------------
- * Criar /DVD
+ * Criar HDD_DVD_PATH
  * ------------------------------------------------------------
  */
 
@@ -454,15 +454,15 @@ int hdd_ensure_dvd_directory(void)
 
 
     /*
-     * Primeiro verifica se /DVD já existe.
+     * Primeiro verifica se HDD_DVD_PATH já existe.
      */
 
     printf(
-        "HDD: checking pfs0:/DVD\n"
+        "HDD: checking " HDD_DVD_PATH "\n"
     );
 
     dd = fileXioDopen(
-        "pfs0:/DVD"
+        HDD_DVD_PATH
     );
 
     printf(
@@ -493,7 +493,7 @@ int hdd_ensure_dvd_directory(void)
     );
 
     printf(
-        "HDD: creating pfs0:/DVD\n"
+        "HDD: creating " HDD_DVD_PATH "\n"
     );
 
 
@@ -506,7 +506,7 @@ int hdd_ensure_dvd_directory(void)
      */
 
     result = fileXioMkdir(
-        "pfs0:/DVD",
+        HDD_DVD_PATH,
         0777
     );
 
@@ -518,7 +518,7 @@ int hdd_ensure_dvd_directory(void)
     if (result < 0)
     {
         hdd_set_error(
-            "Cannot create pfs0:/DVD"
+            "Cannot create " HDD_DVD_PATH
         );
 
         printf(
@@ -535,11 +535,11 @@ int hdd_ensure_dvd_directory(void)
      */
 
     printf(
-        "HDD: verifying pfs0:/DVD\n"
+        "HDD: verifying " HDD_DVD_PATH "\n"
     );
 
     dd = fileXioDopen(
-        "pfs0:/DVD"
+        HDD_DVD_PATH
     );
 
     printf(
@@ -568,7 +568,7 @@ int hdd_ensure_dvd_directory(void)
     );
 
     printf(
-        "HDD: pfs0:/DVD ready\n"
+        "HDD: " HDD_DVD_PATH " ready\n"
     );
 
     hdd_clear_error();
@@ -599,7 +599,7 @@ int hdd_list_dvd(void)
 
 
     /*
-     * Antes de listar, garante que /DVD existe.
+     * Antes de listar, garante que HDD_DVD_PATH existe.
      */
 
     result = hdd_ensure_dvd_directory();
@@ -614,11 +614,11 @@ int hdd_list_dvd(void)
 
 
     printf(
-        "HDD: opening pfs0:/DVD\n"
+        "HDD: opening " HDD_DVD_PATH "\n"
     );
 
     dd = fileXioDopen(
-        "pfs0:/DVD"
+        HDD_DVD_PATH
     );
 
     printf(
@@ -629,7 +629,7 @@ int hdd_list_dvd(void)
     if (dd < 0)
     {
         hdd_set_error(
-            "Cannot open pfs0:/DVD"
+            "Cannot open " HDD_DVD_PATH
         );
 
         printf(
@@ -763,7 +763,7 @@ int hdd_list_dvd(void)
     if (result < 0)
     {
         hdd_set_error(
-            "Error reading pfs0:/DVD"
+            "Error reading " HDD_DVD_PATH
         );
 
         printf(

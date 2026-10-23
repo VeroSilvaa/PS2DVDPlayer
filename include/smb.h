@@ -6,6 +6,12 @@
 #define SMB_MAX_FILES 64
 #define SMB_MAX_NAME  128
 
+/*
+ * Pasta das ISOs de filmes no share.
+ * Separada de /DVD e /CD, que são usadas pelo OPL para jogos.
+ */
+#define SMB_DVD_PATH "smb0:/FILMES"
+
 typedef struct
 {
     char name[SMB_MAX_NAME];

@@ -1826,14 +1826,14 @@ static void smb_test(void)
 
 
     /*
-     * Lista /DVD.
+     * Lista SMB_DVD_PATH.
      */
 
     smb_test_state = 4;
 
 
     printf(
-        "SMB TEST: listing smb0:/DVD\n"
+        "SMB TEST: listing " SMB_DVD_PATH "\n"
     );
 
 
@@ -2248,7 +2248,7 @@ static void draw_iso_list(
     snprintf(
         line,
         sizeof(line),
-        "SMB %s/%s  /DVD  (%d ISO)",
+        "SMB %s/%s  /FILMES  (%d ISO)",
         info->server,
         info->share,
         info->file_count
@@ -2276,7 +2276,7 @@ static void draw_iso_list(
             2,
             0.45f,
             COLOR_DISABLED,
-            "No ISO files found in /DVD"
+            "No ISO files found in /FILMES"
         );
     }
 
@@ -2509,7 +2509,7 @@ static void update_iso_list(void)
         snprintf(
             path,
             sizeof(path),
-            "smb0:/DVD/%s",
+            SMB_DVD_PATH "/%s",
             iso_info_name
         );
 
@@ -2974,7 +2974,7 @@ static void update_iso_info(void)
         snprintf(
             path,
             sizeof(path),
-            "smb0:/DVD/%s",
+            SMB_DVD_PATH "/%s",
             iso_info_name
         );
 
@@ -2996,7 +2996,7 @@ static void update_iso_info(void)
         snprintf(
             path,
             sizeof(path),
-            "smb0:/DVD/%s",
+            SMB_DVD_PATH "/%s",
             iso_info_name
         );
 
@@ -3714,7 +3714,7 @@ static void update_frame(void)
             return;
         }
 
-        snprintf(path, sizeof(path), "smb0:/DVD/%s", iso_info_name);
+        snprintf(path, sizeof(path), SMB_DVD_PATH "/%s", iso_info_name);
 
         /*
          * X: navegação do DVD (libdvdnav) a partir do First Play.

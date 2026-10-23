@@ -52,7 +52,7 @@ PS2DVDPlayer/
 1. Inicializacao de video.
 2. Controle DualShock 2.
 3. Inicializacao USB.
-4. Navegacao em `mass:/DVD/`.
+4. Navegacao em `mass:/FILMES/` (separado de `/DVD`, usado pelo OPL).
 5. Lista de arquivos `.iso`.
 6. Leitura da ISO e deteccao de `VIDEO_TS`.
 7. Player DVD-Video.

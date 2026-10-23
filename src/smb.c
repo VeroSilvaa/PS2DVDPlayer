@@ -13,7 +13,6 @@
 #include "smb.h"
 
 #define SMB_DEVICE   "smb0:"
-#define SMB_DVD_PATH "smb0:/DVD"
 #define SMB_PORT     445
 
 /*
@@ -805,7 +804,7 @@ int smb_connect(
 
 
 /* ============================================================
- * LISTA /DVD
+ * LISTA SMB_DVD_PATH
  * ============================================================ */
 
 int smb_list_dvd(void)
@@ -852,7 +851,7 @@ int smb_list_dvd(void)
     if (dir < 0)
     {
         smb_set_error(
-            "Cannot open smb0:/DVD",
+            "Cannot open " SMB_DVD_PATH,
             dir
         );
 

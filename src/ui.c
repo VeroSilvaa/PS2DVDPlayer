@@ -352,11 +352,16 @@ static int draw_text(UiFont font, float x, float y, const char *text, int length
             float u = (float)((index % FONT_PER_ROW) * f->cell_w);
             float v = (float)((index / FONT_PER_ROW) * f->cell_h);
 
-            /* a célula tem 1 px de margem à esquerda (make_assets.py) */
+            /*
+             * A célula tem 1 px de margem à esquerda (make_assets.py) e
+             * a última coluna/linha vazias: o sprite vai até antes
+             * delas, senão o GS lia 1 texel da célula vizinha (um ponto
+             * aparecia depois do "P").
+             */
             gsKit_prim_sprite_texture(gs, &f->tex,
                                       x - 1, y, u, v,
-                                      x - 1 + f->cell_w, y + f->cell_h,
-                                      u + f->cell_w, v + f->cell_h,
+                                      x - 2 + f->cell_w, y + f->cell_h - 1,
+                                      u + f->cell_w - 1, v + f->cell_h - 1,
                                       Z_UI, color);
         }
 

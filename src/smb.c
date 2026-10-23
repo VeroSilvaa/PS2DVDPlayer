@@ -718,16 +718,36 @@ int smb_connect(
 
 
 /* ============================================================
- * LISTA SMB_DVD_PATH
+ * LISTA smb0:/<pasta>
  * ============================================================ */
 
-int smb_list_dvd(void)
+void smb_dvd_path(char *out, int size, const char *folder)
 {
+    /* sem barras sobrando: "/FILMES/" -> "FILMES" */
+    while (folder && *folder == '/')
+        folder++;
+
+    snprintf(out, size, SMB_DEVICE_ROOT "%s", folder ? folder : "");
+
+    {
+        int n = strlen(out);
+
+        while (n > (int)strlen(SMB_DEVICE_ROOT) && out[n - 1] == '/')
+            out[--n] = '\0';
+    }
+}
+
+
+int smb_list_dvd(const char *folder)
+{
+    char path[SMB_PATH_MAX];
     int dir;
     int result;
 
     iox_dirent_t entry
         __attribute__((aligned(64)));
+
+    smb_dvd_path(path, sizeof(path), folder);
 
 
     if (
@@ -747,12 +767,12 @@ int smb_list_dvd(void)
     smbInfo.file_count = 0;
 
 
-    printf("SMB: LIST: opening %s\n", SMB_DVD_PATH);
+    printf("SMB: LIST: opening %s\n", path);
 
 
     dir =
         fileXioDopen(
-            SMB_DVD_PATH
+            path
         );
 
 
@@ -764,8 +784,12 @@ int smb_list_dvd(void)
 
     if (dir < 0)
     {
+        char message[SMB_PATH_MAX + 32];
+
+        snprintf(message, sizeof(message), "Pasta %s não encontrada", path + strlen(SMB_DEVICE_ROOT) - 1);
+
         smb_set_error(
-            "Cannot open " SMB_DVD_PATH,
+            message,
             dir
         );
 

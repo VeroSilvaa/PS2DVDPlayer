@@ -50,6 +50,7 @@ static void netcfg_defaults(NetConfig *c)
     memcpy(c->server, server, sizeof(server));
 
     strcpy(c->share, "samba");
+    strcpy(c->folder, "FILMES");
     strcpy(c->user, "guest");
 }
 
@@ -104,6 +105,8 @@ static void parse_line(NetConfig *c, char *line)
         parse_ip(c->server, value);
     else if (strcmp(line, "smb_share") == 0)
         snprintf(c->share, sizeof(c->share), "%s", value);
+    else if (strcmp(line, "smb_folder") == 0)
+        snprintf(c->folder, sizeof(c->folder), "%s", value);
     else if (strcmp(line, "smb_user") == 0)
         snprintf(c->user, sizeof(c->user), "%s", value);
     else if (strcmp(line, "smb_password") == 0)
@@ -242,6 +245,7 @@ int netcfg_save(void)
         "dns=%d.%d.%d.%d\n"
         "smb_server=%d.%d.%d.%d\n"
         "smb_share=%s\n"
+        "smb_folder=%s\n"
         "smb_user=%s\n"
         "smb_password=%s\n",
         cfg.dhcp,
@@ -250,7 +254,7 @@ int netcfg_save(void)
         cfg.gateway[0], cfg.gateway[1], cfg.gateway[2], cfg.gateway[3],
         cfg.dns[0], cfg.dns[1], cfg.dns[2], cfg.dns[3],
         cfg.server[0], cfg.server[1], cfg.server[2], cfg.server[3],
-        cfg.share, cfg.user, cfg.password);
+        cfg.share, cfg.folder, cfg.user, cfg.password);
 
     /* mesmo cartão de onde foi lido; senão mc0:, depois mc1: */
     for (i = 0; i < 2; i++)

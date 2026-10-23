@@ -22,6 +22,7 @@ typedef struct
     int server[4];              /* servidor SMB (porta 445) */
 
     char share[NETCFG_TEXT];
+    char folder[NETCFG_TEXT];   /* pasta das ISOs no compartilhamento */
     char user[NETCFG_TEXT];
     char password[NETCFG_TEXT];
 } NetConfig;

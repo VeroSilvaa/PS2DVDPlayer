@@ -24,6 +24,7 @@
 
 #include "bdm.h"
 #include "ui.h"
+#include "osk.h"
 #include "iop_boot.h"
 
 /* ============================================================
@@ -75,6 +76,10 @@ enum
     SMB_ITEM_GATEWAY,
     SMB_ITEM_DNS,
     SMB_ITEM_SERVER,
+    SMB_ITEM_SHARE,         /* texto: teclado virtual */
+    SMB_ITEM_FOLDER,
+    SMB_ITEM_USER,
+    SMB_ITEM_PASSWORD,
     SMB_ITEM_APPLY,
     SMB_ITEM_BACK,
 
@@ -109,6 +114,22 @@ static int static_values[5][4] =
 
 
 static int smb_editing = 0;
+
+/*
+ * Itens de texto da tela SMB (teclado virtual) e linhas visíveis.
+ */
+static int smb_osk_item = -1;       /* item em edição no teclado, -1 = fechado */
+
+/* IP/Máscara/Gateway/DNS só aparecem no modo estático */
+static int smb_item_visible(int item)
+{
+    if (item >= SMB_ITEM_IP && item <= SMB_ITEM_DNS)
+        return smb_mode == NETWORK_STATIC;
+
+    return 1;
+}
+
+
 static int smb_octet = 0;
 
 static int smb_hold_frames = 0;
@@ -177,7 +198,8 @@ enum { LIB_SMB = 0, LIB_USB, LIB_HDD };
 
 #define LIB_MAX_FILES 64
 #define LIB_MAX_NAME  128
-#define LIB_PATH_MAX  (16 + 8 + LIB_MAX_NAME)
+#define LIB_DIR_MAX   96              /* "smb0:/<pasta configurada>" */
+#define LIB_PATH_MAX  (LIB_DIR_MAX + 1 + LIB_MAX_NAME)
 
 /*
  * Tela inicial: busca USB/HDD (1 = pedida, roda no próximo quadro) e
@@ -189,7 +211,7 @@ static char main_msg[160];
 static int main_msg_error = 0;
 
 static int lib_source = LIB_SMB;
-static char lib_dir[24];                /* ex.: "usb0:/FILMES" */
+static char lib_dir[LIB_DIR_MAX];                /* ex.: "usb0:/FILMES" */
 static char lib_label[96];              /* cabeçalho da lista */
 static int lib_count = 0;
 
@@ -236,8 +258,8 @@ static void lib_from_smb(void)
 
     lib_source = LIB_SMB;
     lib_count = 0;
-    snprintf(lib_dir, sizeof(lib_dir), "%s", SMB_DVD_PATH);
-    snprintf(lib_label, sizeof(lib_label), "SMB %.24s/%.32s  /FILMES", info->server, info->share);
+    smb_dvd_path(lib_dir, sizeof(lib_dir), netcfg_get()->folder);
+    snprintf(lib_label, sizeof(lib_label), "SMB %.20s/%.24s  /%.32s", info->server, info->share, netcfg_get()->folder);
 
     for (i = 0; i < info->file_count && i < LIB_MAX_FILES; i++)
     {
@@ -605,91 +627,45 @@ static void draw_main(
  * DESENHO DE IP
  * ============================================================ */
 
-static void draw_editable_ip(
-    GSGLOBAL *gsGlobal,
-    GSFONTM *font,
-    float x,
-    float y,
-    int row,
-    int enabled
-)
+/* linha de static_values sendo editada (-1 = nenhuma) */
+static int smb_editing_row(void)
 {
+    switch (smb_selected)
+    {
+        case SMB_ITEM_IP:      return 0;
+        case SMB_ITEM_MASK:    return 1;
+        case SMB_ITEM_GATEWAY: return 2;
+        case SMB_ITEM_DNS:     return 3;
+        case SMB_ITEM_SERVER:  return SMB_SERVER_ROW;
+    }
+
+    return -1;
+}
+
+
+/* "192.168.001.009": o número em edição fica num destaque azul */
+static void draw_editable_ip(float x, float y, int row, int enabled)
+{
+    u64 color = enabled ? UI_TEXT : UI_DIM;
     int i;
-    int editing_row = -1;
-    char number[8];
-
-
-    if (smb_selected == SMB_ITEM_IP)
-        editing_row = 0;
-    else if (smb_selected == SMB_ITEM_MASK)
-        editing_row = 1;
-    else if (smb_selected == SMB_ITEM_GATEWAY)
-        editing_row = 2;
-    else if (smb_selected == SMB_ITEM_DNS)
-        editing_row = 3;
-    else if (smb_selected == SMB_ITEM_SERVER)
-        editing_row = SMB_SERVER_ROW;
-
 
     for (i = 0; i < 4; i++)
     {
-        sprintf(
-            number,
-            "%03d",
-            static_values[row][i]
-        );
+        char number[8];
+        float nx = x + i * 52.0f;
 
+        snprintf(number, sizeof(number), "%03d", static_values[row][i]);
 
-        if (
-            enabled &&
-            smb_editing &&
-            row == editing_row &&
-            i == smb_octet
-        )
+        if (enabled && smb_editing && row == smb_editing_row() && i == smb_octet)
         {
-            gsKit_fontm_print_scaled(
-                gsGlobal,
-                font,
-                x + (i * 55.0f),
-                y,
-                2,
-                0.48f,
-                COLOR_ERROR,
-                number
-            );
-        }
-        else
-        {
-            gsKit_fontm_print_scaled(
-                gsGlobal,
-                font,
-                x + (i * 55.0f),
-                y,
-                2,
-                0.48f,
-                enabled
-                    ? COLOR_WHITE
-                    : COLOR_DISABLED,
-                number
-            );
+            ui_rect(nx - 4, y + 2, 40, 26, ui_rgba(0x2A, 0x66, 0xC8, 0x80));
+            ui_border(nx - 4, y + 2, 40, 26, 2, ui_rgba(0x7C, 0xB8, 0xFF, 0x80));
         }
 
+        ui_text(nx, y, number, color);
 
         if (i < 3)
-        {
-            gsKit_fontm_print_scaled(
-                gsGlobal,
-                font,
-                x + (i * 55.0f) + 42.0f,
-                y,
-                2,
-                0.48f,
-                enabled
-                    ? COLOR_WHITE
-                    : COLOR_DISABLED,
-                "."
-            );
-        }
+            ui_text(nx + 38, y, ".", color);
     }
 }
 
@@ -698,578 +674,202 @@ static void draw_editable_ip(
  * DESENHO DA TELA SMB
  * ============================================================ */
 
+#define SMB_TABLE_X   56
+#define SMB_TABLE_W   528
+#define SMB_TABLE_Y   112
+#define SMB_VALUE_X   (SMB_TABLE_X + 196)
+
+/* linha da tabela: rótulo à esquerda (coluna escura), destaque no valor */
+static void smb_row(float y, float h, const char *label, int item)
+{
+    int selected = item == smb_selected && !smb_editing && smb_osk_item < 0;
+
+    ui_rect(SMB_TABLE_X + 6, y, 184, h - 2, ui_rgba(0x0C, 0x18, 0x34, 0x80));
+
+    if (selected)
+    {
+        ui_vgradient(SMB_VALUE_X - 6, y, SMB_TABLE_W - 202, h - 2,
+                     ui_rgba(0x2A, 0x66, 0xC8, 0x80), ui_rgba(0x16, 0x3C, 0x86, 0x80));
+        ui_border(SMB_VALUE_X - 6, y, SMB_TABLE_W - 202, h - 2, 2, ui_rgba(0x7C, 0xB8, 0xFF, 0x80));
+    }
+
+    ui_text(SMB_TABLE_X + 16, y + (h - 28) / 2, label, UI_TEXT);
+}
+
+
+static void smb_button(float x, float y, const char *label, int selected)
+{
+    if (selected)
+    {
+        ui_vgradient(x, y, 150, 34, ui_rgba(0x2A, 0x66, 0xC8, 0x80), ui_rgba(0x16, 0x3C, 0x86, 0x80));
+        ui_border(x, y, 150, 34, 2, ui_rgba(0x7C, 0xB8, 0xFF, 0x80));
+    }
+    else
+    {
+        ui_rect(x, y, 150, 34, ui_rgba(0x10, 0x20, 0x42, 0x80));
+        ui_border(x, y, 150, 34, 2, UI_EDGE);
+    }
+
+    ui_text_center(x + 75, y + 3, label, UI_TEXT);
+}
+
+
+/* "••••" com o número de caracteres da senha, ou "(vazia)" */
+static void smb_secret(char *out, int size, const char *password)
+{
+    int n = 0;
+
+    if (!password[0])
+    {
+        snprintf(out, size, "(vazia)");
+        return;
+    }
+
+    out[0] = '\0';
+
+    while (*password++ && n + 4 < size)
+    {
+        memcpy(out + n, "\xE2\x80\xA2", 3);     /* U+2022 */
+        n += 3;
+        out[n] = '\0';
+    }
+}
+
+
 static void draw_smb(
     GSGLOBAL *gsGlobal,
     GSFONTM *font
 )
 {
-    const NetworkInfo *net;
+    static const char *labels[SMB_ITEM_APPLY] = {
+        "Modo", "IP", "Máscara", "Gateway", "DNS", "Servidor SMB",
+        "Compartilhamento", "Pasta", "Usuário", "Senha"
+    };
+    const NetworkInfo *net = network_get_info();
+    const NetConfig *cfg = netcfg_get();
+    int stat = smb_mode == NETWORK_STATIC;
+    float row_h = stat ? 26 : 30;
+    const char *status = NULL;
+    u64 status_color = UI_TEXT;
+    char text[96];
+    float x, y;
+    int item, rows = 0;
 
-    net = network_get_info();
+    (void)font;
 
+    ui_screen_begin(gsGlobal, "CONFIGURAÇÃO SMB");
 
-    gsKit_clear(
-        gsGlobal,
-        COLOR_BG
-    );
+    for (item = 0; item < SMB_ITEM_APPLY; item++)
+        rows += smb_item_visible(item);
 
+    /* tabela: no modo DHCP só aparecem as linhas usadas */
+    ui_rect(SMB_TABLE_X, SMB_TABLE_Y, SMB_TABLE_W, rows * row_h + 10, UI_PANEL);
+    ui_border(SMB_TABLE_X, SMB_TABLE_Y, SMB_TABLE_W, rows * row_h + 10, 2, UI_EDGE);
 
-    gsKit_fontm_print_scaled(
-        gsGlobal,
-        font,
-        220.0f,
-        30.0f,
-        2,
-        0.85f,
-        COLOR_WHITE,
-        "SMB NETWORK"
-    );
+    y = SMB_TABLE_Y + 5;
 
-
-    gsKit_prim_sprite(
-        gsGlobal,
-        90.0f,
-        70.0f,
-        550.0f,
-        450.0f,
-        2,
-        COLOR_PANEL
-    );
-
-
-    /*
-     * Barra de seleção.
-     */
+    for (item = 0; item < SMB_ITEM_APPLY; item++)
     {
-        float x1 = 110.0f;
-        float x2 = 530.0f;
-        float y1;
-        float y2;
+        float ty;
 
-        if (smb_selected == SMB_ITEM_MODE)
+        if (!smb_item_visible(item))
+            continue;
+
+        smb_row(y, row_h, labels[item], item);
+        ty = y + (row_h - 28) / 2;
+
+        switch (item)
         {
-            y1 = 85.0f;
-            y2 = 115.0f;
-        }
-        else if (smb_selected == SMB_ITEM_IP)
-        {
-            y1 = 120.0f;
-            y2 = 150.0f;
-        }
-        else if (smb_selected == SMB_ITEM_MASK)
-        {
-            y1 = 155.0f;
-            y2 = 185.0f;
-        }
-        else if (smb_selected == SMB_ITEM_GATEWAY)
-        {
-            y1 = 190.0f;
-            y2 = 220.0f;
-        }
-        else if (smb_selected == SMB_ITEM_DNS)
-        {
-            y1 = 225.0f;
-            y2 = 255.0f;
-        }
-        else if (smb_selected == SMB_ITEM_SERVER)
-        {
-            y1 = 260.0f;
-            y2 = 290.0f;
-        }
-        else if (smb_selected == SMB_ITEM_APPLY)
-        {
-            /*
-             * APPLY e BACK lado a lado.
-             */
-            x2 = 315.0f;
-            y1 = 300.0f;
-            y2 = 335.0f;
-        }
-        else
-        {
-            x1 = 325.0f;
-            y1 = 300.0f;
-            y2 = 335.0f;
+            case SMB_ITEM_MODE:
+                ui_text(SMB_VALUE_X, ty, stat ? "<  Estático  >" : "<  DHCP  >", UI_OK);
+                break;
+
+            case SMB_ITEM_IP:
+            case SMB_ITEM_MASK:
+            case SMB_ITEM_GATEWAY:
+            case SMB_ITEM_DNS:
+                draw_editable_ip(SMB_VALUE_X, ty, item - SMB_ITEM_IP, 1);
+                break;
+
+            case SMB_ITEM_SERVER:
+                draw_editable_ip(SMB_VALUE_X, ty, SMB_SERVER_ROW, 1);
+                break;
+
+            case SMB_ITEM_SHARE:
+                ui_text_fit(SMB_VALUE_X, ty, 320, cfg->share, UI_TEXT);
+                break;
+
+            case SMB_ITEM_FOLDER:
+                snprintf(text, sizeof(text), "/%s", cfg->folder);
+                ui_text_fit(SMB_VALUE_X, ty, 320, text, UI_TEXT);
+                break;
+
+            case SMB_ITEM_USER:
+                ui_text_fit(SMB_VALUE_X, ty, 320, cfg->user, UI_TEXT);
+                break;
+
+            case SMB_ITEM_PASSWORD:
+                smb_secret(text, sizeof(text), cfg->password);
+                ui_text_fit(SMB_VALUE_X, ty, 320, text, cfg->password[0] ? UI_TEXT : UI_DIM);
+                break;
         }
 
-
-        if (!smb_editing)
-        {
-            gsKit_prim_sprite(
-                gsGlobal,
-                x1,
-                y1,
-                x2,
-                y2,
-                3,
-                COLOR_SELECTED
-            );
-        }
+        y += row_h;
     }
 
+    /* botões logo abaixo da tabela */
+    y += 12;
+    smb_button(160, y, "Aplicar", smb_selected == SMB_ITEM_APPLY && !smb_editing && smb_osk_item < 0);
+    smb_button(330, y, "Voltar", smb_selected == SMB_ITEM_BACK && !smb_editing && smb_osk_item < 0);
 
-    /*
-     * MODE
-     */
-
-    gsKit_fontm_print_scaled(
-        gsGlobal,
-        font,
-        125.0f,
-        90.0f,
-        2,
-        0.48f,
-        COLOR_WHITE,
-        "Mode:"
-    );
-
-
-    if (smb_mode == NETWORK_DHCP)
+    /* andamento da conexão (no rodapé, à direita) */
+    if (smb_waiting_network)
+        status = "Aguardando endereço IP...";
+    else if (smb_test_state == 1)
+        status = "Iniciando SMB...";
+    else if (smb_test_state == 2)
+        status = "Conectando ao servidor...";
+    else if (smb_test_state == 3)
+        status = "Conectado", status_color = UI_OK;
+    else if (smb_test_state == 4)
+        status = "Conectado: lendo a pasta...", status_color = UI_OK;
+    else if (smb_test_state == 5)
+        status = "Conexão realizada com sucesso!", status_color = UI_OK;
+    else if (smb_test_state == -1)
     {
-        gsKit_fontm_print_scaled(
-            gsGlobal,
-            font,
-            300.0f,
-            90.0f,
-            2,
-            0.48f,
-            COLOR_OK,
-            "< DHCP >"
-        );
-    }
-    else
-    {
-        gsKit_fontm_print_scaled(
-            gsGlobal,
-            font,
-            285.0f,
-            90.0f,
-            2,
-            0.48f,
-            COLOR_OK,
-            "< STATIC >"
-        );
+        status = smb_error_line[0] ? smb_error_line : "Falha na conexão";
+        status_color = UI_ERROR;
     }
 
-
-    /*
-     * IP
-     */
-
-    gsKit_fontm_print_scaled(
-        gsGlobal,
-        font,
-        125.0f,
-        125.0f,
-        2,
-        0.48f,
-        COLOR_WHITE,
-        "IP:"
-    );
-
-    draw_editable_ip(
-        gsGlobal,
-        font,
-        280.0f,
-        125.0f,
-        0,
-        smb_mode == NETWORK_STATIC
-    );
-
-
-    /*
-     * MASK
-     */
-
-    gsKit_fontm_print_scaled(
-        gsGlobal,
-        font,
-        125.0f,
-        160.0f,
-        2,
-        0.48f,
-        COLOR_WHITE,
-        "Mask:"
-    );
-
-    draw_editable_ip(
-        gsGlobal,
-        font,
-        280.0f,
-        160.0f,
-        1,
-        smb_mode == NETWORK_STATIC
-    );
-
-
-    /*
-     * GATEWAY
-     */
-
-    gsKit_fontm_print_scaled(
-        gsGlobal,
-        font,
-        125.0f,
-        195.0f,
-        2,
-        0.48f,
-        COLOR_WHITE,
-        "Gateway:"
-    );
-
-    draw_editable_ip(
-        gsGlobal,
-        font,
-        280.0f,
-        195.0f,
-        2,
-        smb_mode == NETWORK_STATIC
-    );
-
-
-    /*
-     * DNS
-     */
-
-    gsKit_fontm_print_scaled(
-        gsGlobal,
-        font,
-        125.0f,
-        230.0f,
-        2,
-        0.48f,
-        COLOR_WHITE,
-        "DNS:"
-    );
-
-    draw_editable_ip(
-        gsGlobal,
-        font,
-        280.0f,
-        230.0f,
-        3,
-        smb_mode == NETWORK_STATIC
-    );
-
-
-    /*
-     * SERVIDOR SMB
-     *
-     * Sempre editável, em DHCP ou STATIC.
-     */
-
-    gsKit_fontm_print_scaled(
-        gsGlobal,
-        font,
-        125.0f,
-        265.0f,
-        2,
-        0.48f,
-        COLOR_WHITE,
-        "SMB Server:"
-    );
-
-    draw_editable_ip(
-        gsGlobal,
-        font,
-        280.0f,
-        265.0f,
-        SMB_SERVER_ROW,
-        1
-    );
-
-
-    /*
-     * Editor.
-     */
+    /* rodapé */
+    ui_footer_line();
+    x = 32;
 
     if (smb_editing)
     {
-        gsKit_fontm_print_scaled(
-            gsGlobal,
-            font,
-            125.0f,
-            300.0f,
-            2,
-            0.43f,
-            COLOR_OK,
-            "EDIT NETWORK ADDRESS"
-        );
-
-        gsKit_fontm_print_scaled(
-            gsGlobal,
-            font,
-            125.0f,
-            322.0f,
-            2,
-            0.40f,
-            COLOR_WHITE,
-            "LEFT/RIGHT=Octet  UP/DOWN=Value"
-        );
-
-        gsKit_fontm_print_scaled(
-            gsGlobal,
-            font,
-            125.0f,
-            344.0f,
-            2,
-            0.40f,
-            COLOR_WHITE,
-            "CROSS=Finish"
-        );
+        x += ui_button_hint(x, UI_FOOTER_Y, UI_BTN_LEFT, "");
+        x += ui_button_hint(x - 18, UI_FOOTER_Y, UI_BTN_RIGHT, "Número") - 18;
+        x += ui_button_hint(x, UI_FOOTER_Y, UI_BTN_UP, "");
+        x += ui_button_hint(x - 18, UI_FOOTER_Y, UI_BTN_DOWN, "Valor") - 18;
+        x += ui_button_hint(x, UI_FOOTER_Y, UI_BTN_CROSS, "Concluir");
     }
     else
     {
-        gsKit_fontm_print_scaled(
-            gsGlobal,
-            font,
-            180.0f,
-            307.0f,
-            2,
-            0.55f,
-            COLOR_WHITE,
-            "APPLY"
-        );
-
-        gsKit_fontm_print_scaled(
-            gsGlobal,
-            font,
-            400.0f,
-            307.0f,
-            2,
-            0.55f,
-            COLOR_WHITE,
-            "BACK"
-        );
+        x += ui_button_hint(x, UI_FOOTER_Y, UI_BTN_CROSS, "Confirmar");
+        x += ui_button_hint(x, UI_FOOTER_Y, UI_BTN_CIRCLE, "Voltar");
     }
 
-
-    /*
-     * STATUS SMB / NETWORK.
-     */
-
-    if (smb_waiting_network)
+    if (status)
+        ui_text_fit(x, UI_FOOTER_Y, 608 - x, status, status_color);
+    else if (net && net->initialized)
     {
-        gsKit_fontm_print_scaled(
-            gsGlobal,
-            font,
-            125.0f,
-            365.0f,
-            2,
-            0.42f,
-            COLOR_WHITE,
-            "NETWORK: WAITING FOR IP..."
-        );
-    }
-    else if (smb_test_state == 1)
-    {
-        gsKit_fontm_print_scaled(
-            gsGlobal,
-            font,
-            125.0f,
-            365.0f,
-            2,
-            0.42f,
-            COLOR_WHITE,
-            "SMB: INITIALIZING..."
-        );
-    }
-    else if (smb_test_state == 2)
-    {
-        gsKit_fontm_print_scaled(
-            gsGlobal,
-            font,
-            125.0f,
-            365.0f,
-            2,
-            0.42f,
-            COLOR_WHITE,
-            "SMB: CONNECTING..."
-        );
-    }
-    else if (smb_test_state == 3)
-    {
-        gsKit_fontm_print_scaled(
-            gsGlobal,
-            font,
-            125.0f,
-            365.0f,
-            2,
-            0.42f,
-            COLOR_OK,
-            "SMB: CONNECTED"
-        );
-    }
-    else if (smb_test_state == 4)
-    {
-        gsKit_fontm_print_scaled(
-            gsGlobal,
-            font,
-            125.0f,
-            365.0f,
-            2,
-            0.42f,
-            COLOR_OK,
-            "SMB: CONNECTED / LISTING DVD"
-        );
-    }
-    else if (smb_test_state == 5)
-    {
-        gsKit_fontm_print_scaled(
-            gsGlobal,
-            font,
-            125.0f,
-            365.0f,
-            2,
-            0.42f,
-            COLOR_OK,
-            "SMB: CONNECTED / DVD OK"
-        );
-    }
-    else if (smb_test_state == -1)
-    {
-        gsKit_fontm_print_scaled(
-            gsGlobal,
-            font,
-            125.0f,
-            365.0f,
-            2,
-            0.42f,
-            COLOR_ERROR,
-            smb_error_line[0] != '\0'
-                ? smb_error_line
-                : "SMB: ERROR"
-        );
+        snprintf(text, sizeof(text), "%s  %s", net->mode == NETWORK_DHCP ? "DHCP" : "Estático", net->ip);
+        ui_text_right(608, UI_FOOTER_Y, text, net->link_up ? UI_OK : UI_ERROR);
     }
 
-
-    /*
-     * Estado atual da rede.
-     */
-
-    if (net)
-    {
-        char line[80];
-
-        sprintf(
-            line,
-            "Current: %s",
-            net->mode == NETWORK_DHCP
-                ? "DHCP"
-                : "STATIC"
-        );
-
-        gsKit_fontm_print_scaled(
-            gsGlobal,
-            font,
-            125.0f,
-            385.0f,
-            2,
-            0.40f,
-            COLOR_WHITE,
-            line
-        );
-
-
-        sprintf(
-            line,
-            "IP: %s",
-            net->ip
-        );
-
-        gsKit_fontm_print_scaled(
-            gsGlobal,
-            font,
-            125.0f,
-            405.0f,
-            2,
-            0.40f,
-            net->link_up
-                ? COLOR_OK
-                : COLOR_ERROR,
-            line
-        );
-
-
-        if (net->link_up)
-        {
-            gsKit_fontm_print_scaled(
-                gsGlobal,
-                font,
-                400.0f,
-                405.0f,
-                2,
-                0.40f,
-                COLOR_OK,
-                "LINK UP"
-            );
-        }
-        else
-        {
-            gsKit_fontm_print_scaled(
-                gsGlobal,
-                font,
-                400.0f,
-                405.0f,
-                2,
-                0.40f,
-                COLOR_ERROR,
-                "LINK DOWN"
-            );
-        }
-    }
-
-
-    /*
-     * Ajuda.
-     */
-
-    if (!smb_editing)
-    {
-        gsKit_fontm_print_scaled(
-            gsGlobal,
-            font,
-            125.0f,
-            430.0f,
-            2,
-            0.38f,
-            COLOR_WHITE,
-            "UP/DOWN=Select"
-        );
-
-        gsKit_fontm_print_scaled(
-            gsGlobal,
-            font,
-            350.0f,
-            430.0f,
-            2,
-            0.38f,
-            COLOR_WHITE,
-            "CROSS=Enter"
-        );
-
-        gsKit_fontm_print_scaled(
-            gsGlobal,
-            font,
-            125.0f,
-            448.0f,
-            2,
-            0.38f,
-            COLOR_WHITE,
-            "LEFT/RIGHT=Change Mode"
-        );
-
-        gsKit_fontm_print_scaled(
-            gsGlobal,
-            font,
-            390.0f,
-            448.0f,
-            2,
-            0.38f,
-            COLOR_WHITE,
-            "CIRCLE=Back"
-        );
-    }
+    /* teclado virtual por cima */
+    if (smb_osk_item >= 0)
+        osk_draw();
 }
 
 
@@ -1870,18 +1470,19 @@ static void smb_test(void)
 
 
     /*
-     * Lista SMB_DVD_PATH.
+     * Lista a pasta configurada (netcfg, padrão FILMES).
      */
 
     smb_test_state = 4;
 
 
     printf(
-        "SMB TEST: listing " SMB_DVD_PATH "\n"
+        "SMB TEST: listing folder %s\n",
+        netcfg_get()->folder
     );
 
 
-    result = smb_list_dvd();
+    result = smb_list_dvd(netcfg_get()->folder);
 
 
     printf(
@@ -4106,8 +3707,58 @@ static int frame_skip_render(void)
  * CONTROLE DA TELA SMB
  * ============================================================ */
 
+/*
+ * Itens de texto da tela SMB (teclado virtual) e linhas visíveis.
+ */
+static char *smb_text_value(int item, int *size, const char **title)
+{
+    NetConfig *c = netcfg_get();
+
+    switch (item)
+    {
+        case SMB_ITEM_SHARE:    *title = "Compartilhamento"; *size = sizeof(c->share); return c->share;
+        case SMB_ITEM_FOLDER:   *title = "Pasta dos filmes"; *size = sizeof(c->folder); return c->folder;
+        case SMB_ITEM_USER:     *title = "Usuário"; *size = sizeof(c->user); return c->user;
+        case SMB_ITEM_PASSWORD: *title = "Senha"; *size = sizeof(c->password); return c->password;
+    }
+
+    return NULL;
+}
+
+
+static void update_smb_osk(void)
+{
+    int size;
+    const char *title;
+    char *value = smb_text_value(smb_osk_item, &size, &title);
+    OskResult r = osk_update(input_get_state()->pressed);
+
+    if (r == OSK_EDITING)
+        return;
+
+    /* o texto vai para as preferências; grava no próximo Aplicar */
+    if (r == OSK_DONE && value)
+    {
+        snprintf(value, size, "%s", osk_text());
+        printf("SMB SCREEN: %s changed\n", title);
+    }
+
+    smb_osk_item = -1;
+}
+
+
 static void update_smb(void)
 {
+    /*
+     * Teclado virtual aberto: toda a entrada vai para ele.
+     */
+
+    if (smb_osk_item >= 0)
+    {
+        update_smb_osk();
+        return;
+    }
+
     /*
      * Editor ativo.
      */
@@ -4136,29 +3787,37 @@ static void update_smb(void)
 
     if (input_pressed(PAD_UP))
     {
-        smb_selected--;
+        do
+        {
+            smb_selected--;
 
-        if (smb_selected < 0)
-            smb_selected =
-                SMB_ITEM_COUNT - 1;
+            if (smb_selected < 0)
+                smb_selected =
+                    SMB_ITEM_COUNT - 1;
+        }
+        while (!smb_item_visible(smb_selected));
     }
 
 
     /*
-     * DOWN
+     * DOWN (pula as linhas escondidas no modo DHCP)
      */
 
     if (input_pressed(PAD_DOWN))
     {
-        smb_selected++;
-
-        if (
-            smb_selected >=
-            SMB_ITEM_COUNT
-        )
+        do
         {
-            smb_selected = 0;
+            smb_selected++;
+
+            if (
+                smb_selected >=
+                SMB_ITEM_COUNT
+            )
+            {
+                smb_selected = 0;
+            }
         }
+        while (!smb_item_visible(smb_selected));
     }
 
 
@@ -4321,6 +3980,26 @@ static void update_smb(void)
         {
             smb_editing = 1;
             smb_octet = 0;
+        }
+
+
+        /*
+         * TEXTO (compartilhamento, pasta, usuário, senha): teclado
+         * virtual, só ASCII (nomes SMB/FAT e senhas).
+         */
+
+        else if (
+            smb_selected >= SMB_ITEM_SHARE &&
+            smb_selected <= SMB_ITEM_PASSWORD
+        )
+        {
+            int size;
+            const char *title;
+            char *value = smb_text_value(smb_selected, &size, &title);
+
+            osk_open(title, value, size - 1, smb_selected == SMB_ITEM_PASSWORD);
+            osk_ascii_only();
+            smb_osk_item = smb_selected;
         }
 
 

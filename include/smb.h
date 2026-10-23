@@ -7,10 +7,11 @@
 #define SMB_MAX_NAME  128
 
 /*
- * Pasta das ISOs de filmes no share.
- * Separada de /DVD e /CD, que são usadas pelo OPL para jogos.
+ * Pasta das ISOs de filmes no share: configurável (netcfg, padrão
+ * FILMES, separada de /DVD e /CD, que são usadas pelo OPL para jogos).
  */
-#define SMB_DVD_PATH "smb0:/FILMES"
+#define SMB_DEVICE_ROOT "smb0:/"
+#define SMB_PATH_MAX    80
 
 typedef struct
 {
@@ -43,7 +44,11 @@ int smb_connect(
     const char *user,
     const char *password
 );
-int smb_list_dvd(void);
+/* Lista os .iso de smb0:/<folder> (folder sem barras nas pontas). */
+int smb_list_dvd(const char *folder);
+
+/* "smb0:/<folder>" em out. */
+void smb_dvd_path(char *out, int size, const char *folder);
 void smb_disconnect(void);
 void smb_shutdown(void);
 const SMBInfo *smb_get_info(void);

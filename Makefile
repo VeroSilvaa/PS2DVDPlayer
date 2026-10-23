@@ -20,6 +20,7 @@ EE_OBJS = \
 	build/io_modules.o \
 	build/bdm.o \
 	build/ui.o \
+	build/osk.o \
 	build/pngload.o \
 	build/font_body_png.o \
 	build/font_large_png.o \
@@ -234,6 +235,13 @@ build/bdm.o: src/bdm.c
 build/ui.o: src/ui.c assets/font_body.h assets/font_large.h assets/buttons.h
 	@mkdir -p $(@D)
 	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -Iassets \
+		-I$(GSKIT)/include \
+		-I$(GSKIT)/ee/dma/include \
+		-c $< -o $@
+
+build/osk.o: src/osk.c
+	@mkdir -p $(@D)
+	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) \
 		-I$(GSKIT)/include \
 		-I$(GSKIT)/ee/dma/include \
 		-c $< -o $@

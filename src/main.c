@@ -18,6 +18,7 @@
 #include "spu.h"
 #include "audio.h"
 #include "input.h"
+#include "memcard.h"
 #include "network.h"
 
 #include "hdd.h"
@@ -4596,6 +4597,16 @@ int main(
     printf(
         "MAIN: input_init returned %d\n",
         input_result
+    );
+
+
+    /*
+     * MEMORY CARD (depende do XSIO2MAN de input_init)
+     */
+
+    printf(
+        "MAIN: memcard_init returned %d\n",
+        memcard_init()
     );
 
 

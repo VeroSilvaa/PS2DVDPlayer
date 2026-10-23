@@ -3,6 +3,7 @@ EE_BIN = build/PS2DVDPlayer.elf
 EE_OBJS = \
 	build/main.o \
 	build/input.o \
+	build/memcard.o \
 	build/iop_boot.o \
 	build/network.o \
 	build/smb.o \
@@ -80,6 +81,7 @@ EE_LIBS = \
 	-lps2ips \
 	-lpatches \
 	-lpad \
+	-lmc \
 	-lfileXio \
 	-laudsrv \
 	-lm \
@@ -108,6 +110,11 @@ build/main.o: src/main.c
 		-c $< -o $@
 
 build/input.o: src/input.c
+	@mkdir -p $(@D)
+	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) \
+		-c $< -o $@
+
+build/memcard.o: src/memcard.c
 	@mkdir -p $(@D)
 	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) \
 		-c $< -o $@

@@ -84,6 +84,13 @@ u32 nav_clut_serial(void);
 /* Stream de áudio ativo (0..7). */
 int nav_audio_stream(void);
 
+/*
+ * Deslocamento (90 kHz) a somar aos PTS dos packs seguintes ao último
+ * nav packet, para que a linha do tempo continue entre PGCs/células
+ * cujos PTS recomeçam (vobu_s_ptm != vobu_e_ptm anterior).
+ */
+s64 nav_pts_offset(void);
+
 /* Stream de subpicture ativo (0..31). */
 int nav_spu_stream(void);
 

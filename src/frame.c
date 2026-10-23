@@ -316,6 +316,18 @@ static s64 pes_pts(const u8 *p, int hdr)
 }
 
 
+/*
+ * PTS na linha do tempo contínua da navegação (áudio e vídeo com o
+ * mesmo deslocamento, ver nav_pts_offset).
+ */
+static s64 pes_pts_nav(const u8 *p, int hdr)
+{
+    s64 pts = pes_pts(p, hdr);
+
+    return pts >= 0 ? pts + nav_pts_offset() : -1;
+}
+
+
 static void vpts_push(u32 pos, s64 pts)
 {
     if (vpts_count == VPTS_QUEUE)
@@ -381,7 +393,7 @@ static void demux_pack(const u8 *p)
 
             if (payload_len > 0)
             {
-                s64 pts = nav_mode ? pes_pts(p, hdr) : -1;
+                s64 pts = nav_mode ? pes_pts_nav(p, hdr) : -1;
 
                 if (pts >= 0 && seq_found)
                     vpts_push(ring_wr, pts);
@@ -406,7 +418,7 @@ static void demux_pack(const u8 *p)
                      p[payload] == 0x80 + nav_audio_stream())
             {
                 /* áudio AC3 */
-                audio_feed_ac3(p + payload + 1, payload_len - 1, pes_pts(p, hdr));
+                audio_feed_ac3(p + payload + 1, payload_len - 1, pes_pts_nav(p, hdr));
             }
         }
 

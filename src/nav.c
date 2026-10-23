@@ -59,6 +59,14 @@ static u32 clut_serial = 0;
 static int spu_stream = 0;
 static int audio_stream = 0;
 
+/*
+ * Linha do tempo contínua: cada PGC (ex.: um clipe) recomeça seus
+ * PTS. Quando o vobu_s_ptm de um VOBU não emenda com o vobu_e_ptm do
+ * anterior, pts_offset leva o novo trecho para onde o outro parou.
+ */
+static s64 pts_offset = 0;
+static s64 last_e_ptm = -1;
+
 
 static u64 cache_end(void)
 {
@@ -371,6 +379,12 @@ int nav_audio_stream(void)
 }
 
 
+s64 nav_pts_offset(void)
+{
+    return pts_offset;
+}
+
+
 int nav_spu_stream(void)
 {
     return spu_stream;
@@ -467,6 +481,8 @@ int nav_open(const char *path, u64 size, int prefetch)
     last_buttons = -1;
     spu_stream = 0;
     audio_stream = 0;
+    pts_offset = 0;
+    last_e_ptm = -1;
 
     fileXioSetBlockMode(FXIO_WAIT);
     fileXioSetRWBufferSize(NAV_CACHE);
@@ -596,6 +612,23 @@ int nav_next(u8 *buf, NavEvent *ev)
         {
             pci_t *pci = dvdnav_get_current_nav_pci(nav);
             int n = pci ? pci->hli.hl_gi.btn_ns : 0;
+
+            if (pci)
+            {
+                s64 s = pci->pci_gi.vobu_s_ptm;
+                s64 e = pci->pci_gi.vobu_e_ptm;
+
+                if (last_e_ptm >= 0 && s != last_e_ptm)
+                {
+                    pts_offset += last_e_ptm - s;
+
+                    frame_logf("NAV: PTS discontinuity %lld -> %lld ms, offset %lld ms\n",
+                               (long long)(last_e_ptm / 90), (long long)(s / 90),
+                               (long long)(pts_offset / 90));
+                }
+
+                last_e_ptm = e;
+            }
 
             if (n != last_buttons)
             {

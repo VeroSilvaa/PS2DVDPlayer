@@ -39,7 +39,13 @@ static int frame_len = 0;           /* tamanho do quadro atual (0 = procurando) 
 
 /* janelas de sincronia (90 kHz) */
 #define SYNC_LATE   45000       /* 0,5 s atrasado: descarta */
-#define SYNC_JUMP   270000      /* 3 s à frente: salto, descarta */
+/*
+ * 10 s à frente: salto, descarta. Precisa ser maior que a folga
+ * normal entre o áudio decodificado e a imagem na tela (fila PCM de
+ * ~6 s + buffer de vídeo de ~4 s); com 3 s, uma fila vazia nunca
+ * mais se refazia (todo quadro novo chegava ~4 s à frente).
+ */
+#define SYNC_JUMP   900000
 /* ajuste fino da sincronia (som adiantado > 0) */
 #define SYNC_LEAD   7200        /* 80 ms: medido -66 ms (lead 0) e -20 ms (lead 60) */
 

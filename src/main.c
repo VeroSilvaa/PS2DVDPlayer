@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include <ctype.h>
 #include <malloc.h>
 
 #include <tamtypes.h>
@@ -2000,36 +2001,61 @@ static void update_iso_list(void)
  * TELA DETALHES DA ISO
  * ============================================================ */
 
-static void draw_iso_line(
-    GSGLOBAL *gsGlobal,
-    GSFONTM *font,
-    float y,
-    const char *label,
-    const char *value,
-    u64 color
-)
-{
-    gsKit_fontm_print_scaled(
-        gsGlobal,
-        font,
-        125.0f,
-        y,
-        2,
-        0.42f,
-        COLOR_WHITE,
-        label
-    );
+/* Botões da tela de detalhes (tela 6 do modelo). */
+enum { INFO_PLAY = 0, INFO_MAIN_TITLE, INFO_BACK, INFO_BUTTONS };
 
-    gsKit_fontm_print_scaled(
-        gsGlobal,
-        font,
-        300.0f,
-        y,
-        2,
-        0.42f,
-        color,
-        value
-    );
+static int info_sel = INFO_PLAY;
+
+
+/* dá para tocar: DVD-Video identificado com o VOB do título */
+static int info_playable(void)
+{
+    return iso_info.dvd_parsed && iso_info.vob1_lba;
+}
+
+
+static void info_line(float y, const char *label, const char *value, u64 color)
+{
+    ui_text(236, y, label, UI_DIM);
+    ui_text_fit(366, y, 236, value, color);
+}
+
+
+/* "pt AC3 2ch" -> "PT AC3 2.0" (6ch -> 5.1) */
+static void info_audio_name(char *out, int size, const char *track)
+{
+    char lang[4] = "";
+    char codec[8] = "";
+    int ch = 0;
+
+    if (sscanf(track, "%3s %7s %dch", lang, codec, &ch) < 2)
+    {
+        snprintf(out, size, "%s", track);
+        return;
+    }
+
+    lang[0] = (char)toupper((unsigned char)lang[0]);
+    lang[1] = (char)toupper((unsigned char)lang[1]);
+
+    snprintf(out, size, "%s %s %s", lang, codec,
+             ch >= 6 ? "5.1" : ch == 2 ? "2.0" : ch == 1 ? "mono" : "multi");
+}
+
+
+static void info_button(float y, const char *label, int selected, int enabled)
+{
+    if (selected)
+    {
+        ui_vgradient(236, y, 366, 30, ui_rgba(0x2A, 0x66, 0xC8, 0x80), ui_rgba(0x16, 0x3C, 0x86, 0x80));
+        ui_border(236, y, 366, 30, 2, ui_rgba(0x7C, 0xB8, 0xFF, 0x80));
+    }
+    else
+    {
+        ui_rect(236, y, 366, 30, ui_rgba(0x10, 0x20, 0x42, 0x80));
+        ui_border(236, y, 366, 30, 2, UI_EDGE);
+    }
+
+    ui_text_center(419, y + 1, label, enabled ? UI_TEXT : UI_DIM);
 }
 
 
@@ -2038,254 +2064,116 @@ static void draw_iso_info(
     GSFONTM *font
 )
 {
-    char line[64];
-    char name[40];
+    char line[160];
+    char item[32];
+    float y;
+    int i;
 
+    (void)font;
 
-    gsKit_clear(
-        gsGlobal,
-        COLOR_BG
-    );
+    ui_screen_begin(gsGlobal, "DETALHES DO FILME");
 
+    /* "capa": sem arte no DVD, um disco grande no lugar */
+    ui_rect(40, 116, 180, 230, UI_PANEL);
+    ui_border(40, 116, 180, 230, 2, UI_EDGE);
+    ui_icon(UI_ICON_DISC, 60, 160, 140);
+    ui_text_center(130, 312, info_playable() ? "DVD-Video" : "ISO", UI_DIM);
 
-    gsKit_fontm_print_scaled(
-        gsGlobal,
-        font,
-        230.0f,
-        30.0f,
-        2,
-        0.85f,
-        COLOR_WHITE,
-        "DVD INFO"
-    );
+    /* nome */
+    ui_text_fit(236, 116, 366, iso_info_name, UI_ACCENT);
 
-
-    gsKit_prim_sprite(
-        gsGlobal,
-        90.0f,
-        70.0f,
-        550.0f,
-        450.0f,
-        2,
-        COLOR_PANEL
-    );
-
-
-    if (strlen(iso_info_name) > 34)
-        snprintf(name, sizeof(name), "%.31s...", iso_info_name);
-    else
-        snprintf(name, sizeof(name), "%s", iso_info_name);
-
-    gsKit_fontm_print_scaled(
-        gsGlobal,
-        font,
-        125.0f,
-        85.0f,
-        2,
-        0.42f,
-        COLOR_OK,
-        name
-    );
-
+    y = 146;
 
     format_size(line, sizeof(line), iso_info_size);
-
-    draw_iso_line(gsGlobal, font, 112.0f, "Size:", line, COLOR_WHITE);
+    info_line(y, "Tamanho:", line, UI_TEXT);
+    y += 24;
 
     if (!iso_info.opened)
-        snprintf(line, sizeof(line), "OPEN FAILED");
+        info_line(y, "Tipo:", "não foi possível abrir", UI_ERROR);
     else if (!iso_info.last_read_ok)
-        snprintf(line, sizeof(line), "READ FAILED");
+        info_line(y, "Tipo:", "erro de leitura", UI_ERROR);
     else
-        snprintf(
-            line,
-            sizeof(line),
-            "OK (%s%s)",
-            iso_info.iso9660 ? "ISO9660" : "",
-            iso_info.udf_anchor ? "+UDF" : ""
-        );
-
-    draw_iso_line(
-        gsGlobal, font, 136.0f, "Disc:",
-        line,
-        (iso_info.opened && iso_info.last_read_ok) ? COLOR_OK : COLOR_ERROR
-    );
-
-    draw_iso_line(
-        gsGlobal, font, 160.0f, "Volume:",
-        iso_info.volume_id[0] ? iso_info.volume_id : "-",
-        COLOR_WHITE
-    );
+        info_line(y, "Tipo:", iso_info.dvd_parsed ? "DVD-Video (ISO)" : iso_info.video_ts ? "DVD (sem detalhes)" : "não é DVD-Video",
+                  iso_info.dvd_parsed ? UI_TEXT : UI_ERROR);
+    y += 24;
 
     if (iso_info.dvd_parsed)
     {
-        char text[64];
-        int i;
+        snprintf(line, sizeof(line), "%u:%02u:%02u",
+                 (unsigned)(iso_info.main_seconds / 3600),
+                 (unsigned)((iso_info.main_seconds / 60) % 60),
+                 (unsigned)(iso_info.main_seconds % 60));
+        info_line(y, "Duração:", line, UI_TEXT);
+        y += 24;
 
-        snprintf(
-            line,
-            sizeof(line),
-            "%d (main #%d)",
-            iso_info.titles,
-            iso_info.main_title
-        );
+        /* idiomas = faixas de áudio */
+        line[0] = '\0';
 
-        draw_iso_line(gsGlobal, font, 184.0f, "Titles:", line, COLOR_WHITE);
+        for (i = 0; i < iso_info.audio_count; i++)
+        {
+            info_audio_name(item, sizeof(item), iso_info.audio[i]);
 
-        snprintf(
-            line,
-            sizeof(line),
-            "%u:%02u:%02u  %d ch.",
-            (unsigned)(iso_info.main_seconds / 3600),
-            (unsigned)((iso_info.main_seconds / 60) % 60),
-            (unsigned)(iso_info.main_seconds % 60),
-            iso_info.main_chapters
-        );
+            if (i > 0)
+                strncat(line, ", ", sizeof(line) - strlen(line) - 1);
 
-        draw_iso_line(gsGlobal, font, 208.0f, "Duration:", line, COLOR_WHITE);
+            strncat(line, item, sizeof(line) - strlen(line) - 1);
+        }
 
-        snprintf(
-            line,
-            sizeof(line),
-            "%s %s %s",
-            iso_info.video_mpeg2 ? "MPEG-2" : "MPEG-1",
-            iso_info.video_pal ? "PAL" : "NTSC",
-            iso_info.video_wide ? "16:9" : "4:3"
-        );
+        info_line(y, "Idiomas:", line[0] ? line : "-", UI_TEXT);
+        y += 24;
 
-        draw_iso_line(gsGlobal, font, 232.0f, "Video:", line, COLOR_WHITE);
-
-        /*
-         * Áudio: primeira faixa + total.
-         */
-        if (iso_info.audio_count > 1)
-            snprintf(line, sizeof(line), "%s +%d", iso_info.audio[0], iso_info.audio_count - 1);
-        else if (iso_info.audio_count == 1)
-            snprintf(line, sizeof(line), "%s", iso_info.audio[0]);
-        else
-            snprintf(line, sizeof(line), "-");
-
-        draw_iso_line(gsGlobal, font, 256.0f, "Audio:", line, COLOR_WHITE);
-
-        /*
-         * Legendas: códigos de idioma, até caber.
-         */
-        text[0] = '\0';
+        line[0] = '\0';
 
         for (i = 0; i < iso_info.sub_count; i++)
         {
-            if (strlen(text) + 4 > 18)
-            {
-                strcat(text, "...");
-                break;
-            }
-
-            if (i > 0)
-                strcat(text, " ");
-
-            strcat(text, iso_info.subs[i]);
+            snprintf(item, sizeof(item), "%s%c%c", i ? ", " : "",
+                     toupper((unsigned char)iso_info.subs[i][0]), toupper((unsigned char)iso_info.subs[i][1]));
+            strncat(line, item, sizeof(line) - strlen(line) - 1);
         }
 
-        draw_iso_line(
-            gsGlobal, font, 280.0f, "Subtitles:",
-            iso_info.sub_count ? text : "-",
-            COLOR_WHITE
-        );
+        info_line(y, "Legendas:", line[0] ? line : "nenhuma", UI_TEXT);
+        y += 24;
 
-        snprintf(
-            line,
-            sizeof(line),
-            "%u KB/s avg",
-            (unsigned)iso_info.avg_kbps
-        );
+        snprintf(line, sizeof(line), "%d", iso_info.main_chapters);
+        info_line(y, "Capítulos:", line, UI_TEXT);
+        y += 24;
 
-        draw_iso_line(gsGlobal, font, 304.0f, "Bitrate:", line, COLOR_WHITE);
-
-        draw_iso_line(
-            gsGlobal, font, 328.0f, "Disc start:",
-            iso_info.fp_desc[0] ? iso_info.fp_desc : "-",
-            iso_info.start_bytes ? COLOR_OK : COLOR_DISABLED
-        );
+        snprintf(line, sizeof(line), "%s %s",
+                 iso_info.video_pal ? "PAL" : "NTSC", iso_info.video_wide ? "16:9" : "4:3");
+        info_line(y, "Vídeo:", line, UI_TEXT);
     }
-    else
+    else if (iso_info.error[0])
+        ui_text_fit(236, y, 366, iso_info.error, UI_ERROR);
+
+    /* botões */
+    info_button(322, "Reproduzir", info_sel == INFO_PLAY, info_playable());
+    info_button(356, "Título principal", info_sel == INFO_MAIN_TITLE, info_playable());
+    info_button(390, "Voltar", info_sel == INFO_BACK, 1);
+
+    /* rodapé */
+    ui_footer_line();
     {
-        draw_iso_line(
-            gsGlobal, font, 184.0f, "VIDEO_TS:",
-            iso_info.vmg_ifo ? "OK (details unavailable)" :
-            iso_info.video_ts ? "FOUND" : "NOT FOUND",
-            iso_info.video_ts ? COLOR_OK : COLOR_ERROR
-        );
+        float x = 32;
+
+        x += ui_button_hint(x, UI_FOOTER_Y, UI_BTN_CROSS, "Confirmar");
+        ui_button_hint(x, UI_FOOTER_Y, UI_BTN_CIRCLE, "Voltar");
     }
+}
 
 
+static void info_play(int from_start)
+{
     /*
-     * Resultado.
+     * Reproduzir: começa pelo que o disco manda (First Play, menu).
+     * Título principal: direto no filme.
      */
+    play_from_start = from_start && iso_info.start_bytes;
 
-    if (iso_info_result == 0)
-    {
-        gsKit_fontm_print_scaled(
-            gsGlobal,
-            font,
-            125.0f,
-            360.0f,
-            2,
-            0.48f,
-            COLOR_OK,
-            "DVD-VIDEO IDENTIFIED"
-        );
+    frame_state = 1;
+    current_screen = SCREEN_FRAME;
 
-        gsKit_fontm_print_scaled(
-            gsGlobal,
-            font,
-            125.0f,
-            385.0f,
-            2,
-            0.40f,
-            COLOR_WHITE,
-            "Ready to play"
-        );
-    }
-    else
-    {
-        gsKit_fontm_print_scaled(
-            gsGlobal,
-            font,
-            125.0f,
-            360.0f,
-            2,
-            0.45f,
-            COLOR_ERROR,
-            iso_info.error[0] ? iso_info.error : "IDENTIFY FAILED"
-        );
-    }
-
-
-    gsKit_fontm_print_scaled(
-        gsGlobal,
-        font,
-        390.0f,
-        430.0f,
-        2,
-        0.38f,
-        COLOR_WHITE,
-        "CIRCLE=Back"
-    );
-
-    if (iso_info.dvd_parsed && iso_info.vob1_lba)
-    {
-        gsKit_fontm_print_scaled(
-            gsGlobal,
-            font,
-            125.0f,
-            412.0f,
-            2,
-            0.38f,
-            COLOR_OK,
-            iso_info.start_bytes ? "CROSS=Play (disc start)  SQUARE=Main title" : "CROSS=Play video"
-        );
-    }
-
+    printf("ISO INFO: video playback requested (%s)\n",
+           play_from_start ? iso_info.fp_desc : "main title");
 }
 
 
@@ -2293,29 +2181,34 @@ static void update_iso_info(void)
 {
     if (input_pressed(PAD_CIRCLE))
     {
+        info_sel = INFO_PLAY;
         current_screen = SCREEN_ISO_LIST;
         return;
     }
 
-    if (
-        iso_info.dvd_parsed &&
-        iso_info.vob1_lba &&
-        (input_pressed(PAD_CROSS) || input_pressed(PAD_SQUARE))
-    )
+    if (input_pressed(PAD_UP))
+        info_sel = (info_sel + INFO_BUTTONS - 1) % INFO_BUTTONS;
+
+    if (input_pressed(PAD_DOWN))
+        info_sel = (info_sel + 1) % INFO_BUTTONS;
+
+    /* QUADRADO: atalho para o título principal */
+    if (info_playable() && input_pressed(PAD_SQUARE))
     {
-        /*
-         * X: começa pelo que o disco manda (First Play).
-         * Quadrado: direto no título principal.
-         */
-        play_from_start = input_pressed(PAD_CROSS) && iso_info.start_bytes;
-
-        frame_state = 1;
-        current_screen = SCREEN_FRAME;
-
-        printf("ISO INFO: video playback requested (%s)\n",
-               play_from_start ? iso_info.fp_desc : "main title");
+        info_play(0);
         return;
     }
+
+    if (!input_pressed(PAD_CROSS))
+        return;
+
+    if (info_sel == INFO_BACK)
+    {
+        info_sel = INFO_PLAY;
+        current_screen = SCREEN_ISO_LIST;
+    }
+    else if (info_playable())
+        info_play(info_sel == INFO_PLAY);
 }
 
 

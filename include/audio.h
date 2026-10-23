@@ -51,6 +51,7 @@ typedef struct
     u32 dropped_jump;       /* descartados: PTS muito à frente (salto) */
     u32 dropped_full;       /* descartados: fila de PCM cheia */
     u32 dropped_overlap;    /* descartados: sobrepostos ao trecho seguinte */
+    u32 dropped_catchup;    /* descartados: recuperação de atraso pequeno */
     int queued;             /* quadros esperando na fila */
     u32 silence;            /* bytes de silêncio enviados ao audsrv */
     u32 rpc;                /* chamadas ao audsrv (RPC) */

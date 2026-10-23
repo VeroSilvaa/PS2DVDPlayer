@@ -3832,7 +3832,7 @@ static void play_stats(void)
         );
 
         printf(
-            "AUDIO: output=%d played %u, dropped late %u jump %u full %u overlap %u, queued %d, "
+            "AUDIO: output=%d played %u, dropped late %u jump %u full %u overlap %u catchup %u, queued %d, "
             "silence %u KB, rpc %u, last a-v %d ms, video pts %d ms\n"
             "AUDIO: sync (sound - picture): now %d ms, min %d, avg %d, max %d ms (%u samples)\n",
             as->output,
@@ -3841,6 +3841,7 @@ static void play_stats(void)
             (unsigned)as->dropped_jump,
             (unsigned)as->dropped_full,
             (unsigned)as->dropped_overlap,
+            (unsigned)as->dropped_catchup,
             as->queued,
             (unsigned)(as->silence / 1024),
             (unsigned)as->rpc,

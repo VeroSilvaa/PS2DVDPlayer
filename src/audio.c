@@ -46,6 +46,14 @@ static int frame_len = 0;           /* tamanho do quadro atual (0 = procurando) 
  * mais se refazia (todo quadro novo chegava ~4 s à frente).
  */
 #define SYNC_JUMP   900000
+/*
+ * Recuperação: quadro que já sairia mais atrasado que isso (contando
+ * a fila do audsrv) é descartado. Depois de um salto o primeiro áudio
+ * pode ser anterior à primeira imagem; sem isso o som ficava ~110 ms
+ * atrasado até o próximo salto (abaixo de SYNC_LATE). Jitter normal
+ * medido: -77 a +54 ms.
+ */
+#define SYNC_CATCHUP 8100       /* 90 ms */
 /* ajuste fino da sincronia (som adiantado > 0) */
 #define SYNC_LEAD   7200        /* 80 ms: medido -66 ms (lead 0) e -20 ms (lead 60) */
 
@@ -420,6 +428,8 @@ void audio_pump(s64 video_pts)
                 stats.dropped_late++;
             else if (d > SYNC_JUMP)
                 stats.dropped_jump++;
+            else if (d - bytes_to_ticks(queued) < -SYNC_CATCHUP)
+                stats.dropped_catchup++;
             else
                 break;
 

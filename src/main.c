@@ -167,13 +167,94 @@ static int iso_scroll = 0;
 
 
 /*
+ * Biblioteca: lista de ISOs da fonte escolhida (SMB, USB ou HDD).
+ * A lista, os detalhes e o player usam só lib_dir + nome; a leitura
+ * (fileXio) é a mesma para todas as fontes.
+ */
+enum { LIB_SMB = 0, LIB_USB, LIB_HDD };
+
+#define LIB_MAX_FILES 64
+#define LIB_MAX_NAME  128
+#define LIB_PATH_MAX  (16 + 8 + LIB_MAX_NAME)
+
+static int lib_source = LIB_SMB;
+static char lib_dir[24];                /* ex.: "usb0:/FILMES" */
+static char lib_label[96];              /* cabeçalho da lista */
+static int lib_count = 0;
+
+static struct
+{
+    char name[LIB_MAX_NAME];
+    u64 size;
+} lib_files[LIB_MAX_FILES];
+
+
+/*
  * Resultado da identificação da ISO selecionada.
  */
 
 static IsoInfo iso_info;
 static int iso_info_result = 0;
-static char iso_info_name[SMB_MAX_NAME];
+static char iso_info_name[LIB_MAX_NAME];
 static u64 iso_info_size = 0;
+
+
+/* Caminho completo da ISO selecionada na fonte atual. */
+static void lib_iso_path(char *out, int size)
+{
+    snprintf(out, size, "%s/%s", lib_dir, iso_info_name);
+}
+
+
+/* Abre a lista de ISOs já preenchida. */
+static void lib_show(void)
+{
+    iso_selected = 0;
+    iso_scroll = 0;
+    current_screen = SCREEN_ISO_LIST;
+
+    printf("LIBRARY: %s, %d ISO file(s) in %s\n", lib_label, lib_count, lib_dir);
+}
+
+
+/* Biblioteca a partir da listagem do SMB (smb_list_dvd). */
+static void lib_from_smb(void)
+{
+    const SMBInfo *info = smb_get_info();
+    int i;
+
+    lib_source = LIB_SMB;
+    lib_count = 0;
+    snprintf(lib_dir, sizeof(lib_dir), "%s", SMB_DVD_PATH);
+    snprintf(lib_label, sizeof(lib_label), "SMB %.24s/%.32s  /FILMES", info->server, info->share);
+
+    for (i = 0; i < info->file_count && i < LIB_MAX_FILES; i++)
+    {
+        snprintf(lib_files[i].name, sizeof(lib_files[i].name), "%s", info->files[i].name);
+        lib_files[i].size = info->files[i].size;
+        lib_count++;
+    }
+}
+
+
+/* Biblioteca a partir da listagem do BDM (USB/HDD). */
+static void lib_from_bdm(int kind)
+{
+    const BDMInfo *info = bdm_get_info(kind);
+    int i;
+
+    lib_source = kind == BDM_USB ? LIB_USB : LIB_HDD;
+    lib_count = 0;
+    snprintf(lib_dir, sizeof(lib_dir), "%s" BDM_DVD_DIR, info->root);
+    snprintf(lib_label, sizeof(lib_label), "%s %s  /FILMES", bdm_kind_name(kind), info->root);
+
+    for (i = 0; i < info->file_count && i < LIB_MAX_FILES; i++)
+    {
+        snprintf(lib_files[i].name, sizeof(lib_files[i].name), "%s", info->files[i].name);
+        lib_files[i].size = info->files[i].size;
+        lib_count++;
+    }
+}
 
 
 /*
@@ -1412,8 +1493,8 @@ static void update_main(void)
         else
         {
             /*
-             * USB (0) / HDD (1): FAT32/exFAT pelo BDM.
-             * Etapa 1: carrega, monta e lista no log.
+             * USB (0) / HDD (1): FAT32/exFAT pelo BDM. Monta,
+             * lista /FILMES e abre a mesma biblioteca do SMB.
              */
             int kind = main_selected == 0 ? BDM_USB : BDM_HDD;
             const BDMInfo *info;
@@ -1434,6 +1515,13 @@ static void update_main(void)
 
             if (result < 0 && info)
                 printf("MAIN: %s ERROR: %s\n", bdm_kind_name(kind), info->error);
+
+            /* unidade montada: abre a biblioteca (mesmo se vazia) */
+            if (info && info->mounted && result >= 0)
+            {
+                lib_from_bdm(kind);
+                lib_show();
+            }
         }
     }
 }
@@ -1861,14 +1949,12 @@ static void smb_test(void)
      * Abre a biblioteca de ISOs.
      */
 
-    iso_selected = 0;
-    iso_scroll = 0;
-
-    current_screen = SCREEN_ISO_LIST;
-
     printf(
         "SMB TEST: opening ISO list screen\n"
     );
+
+    lib_from_smb();
+    lib_show();
 }
 
 
@@ -2122,11 +2208,8 @@ static void draw_iso_list(
     GSFONTM *font
 )
 {
-    const SMBInfo *info;
     char line[160];
     int i;
-
-    info = smb_get_info();
 
 
     gsKit_clear(
@@ -2158,17 +2241,12 @@ static void draw_iso_list(
     );
 
 
-    if (!info)
-        return;
-
-
     snprintf(
         line,
         sizeof(line),
-        "SMB %s/%s  /FILMES  (%d ISO)",
-        info->server,
-        info->share,
-        info->file_count
+        "%s  (%d ISO)",
+        lib_label,
+        lib_count
     );
 
     gsKit_fontm_print_scaled(
@@ -2183,7 +2261,7 @@ static void draw_iso_list(
     );
 
 
-    if (info->file_count == 0)
+    if (lib_count == 0)
     {
         gsKit_fontm_print_scaled(
             gsGlobal,
@@ -2210,7 +2288,7 @@ static void draw_iso_list(
         char size_text[24];
         size_t len;
 
-        if (index >= info->file_count)
+        if (index >= lib_count)
             break;
 
 
@@ -2232,7 +2310,7 @@ static void draw_iso_list(
          * Nome truncado para caber no painel.
          */
 
-        len = strlen(info->files[index].name);
+        len = strlen(lib_files[index].name);
 
         if (len > 28)
         {
@@ -2240,7 +2318,7 @@ static void draw_iso_list(
                 name,
                 sizeof(name),
                 "%.25s...",
-                info->files[index].name
+                lib_files[index].name
             );
         }
         else
@@ -2249,7 +2327,7 @@ static void draw_iso_list(
                 name,
                 sizeof(name),
                 "%s",
-                info->files[index].name
+                lib_files[index].name
             );
         }
 
@@ -2269,7 +2347,7 @@ static void draw_iso_list(
         format_size(
             size_text,
             sizeof(size_text),
-            info->files[index].size
+            lib_files[index].size
         );
 
         gsKit_fontm_print_scaled(
@@ -2303,7 +2381,7 @@ static void draw_iso_list(
         );
     }
 
-    if (iso_scroll + ISO_LIST_VISIBLE < info->file_count)
+    if (iso_scroll + ISO_LIST_VISIBLE < lib_count)
     {
         gsKit_fontm_print_scaled(
             gsGlobal,
@@ -2324,7 +2402,7 @@ static void draw_iso_list(
 
     if (
         iso_selected >= 0 &&
-        iso_selected < info->file_count
+        iso_selected < lib_count
     )
     {
         snprintf(
@@ -2332,9 +2410,9 @@ static void draw_iso_list(
             sizeof(line),
             "%d/%d  %llu bytes",
             iso_selected + 1,
-            info->file_count,
+            lib_count,
             (unsigned long long)
-                info->files[iso_selected].size
+                lib_files[iso_selected].size
         );
 
         gsKit_fontm_print_scaled(
@@ -2387,17 +2465,13 @@ static void draw_iso_list(
 
 static void update_iso_list(void)
 {
-    const SMBInfo *info;
-    int count;
-
-    info = smb_get_info();
-
-    count = info ? info->file_count : 0;
+    int count = lib_count;
 
 
+    /* volta para onde a fonte foi escolhida */
     if (input_pressed(PAD_CIRCLE))
     {
-        current_screen = SCREEN_SMB;
+        current_screen = lib_source == LIB_SMB ? SCREEN_SMB : SCREEN_MAIN;
         return;
     }
 
@@ -2412,23 +2486,18 @@ static void update_iso_list(void)
 
     if (input_pressed(PAD_CROSS))
     {
-        char path[SMB_MAX_NAME + 16];
+        char path[LIB_PATH_MAX];
 
         snprintf(
             iso_info_name,
             sizeof(iso_info_name),
             "%s",
-            info->files[iso_selected].name
+            lib_files[iso_selected].name
         );
 
-        iso_info_size = info->files[iso_selected].size;
+        iso_info_size = lib_files[iso_selected].size;
 
-        snprintf(
-            path,
-            sizeof(path),
-            SMB_DVD_PATH "/%s",
-            iso_info_name
-        );
+        lib_iso_path(path, sizeof(path));
 
         iso_info_result =
             iso_identify(
@@ -2886,14 +2955,9 @@ static void update_iso_info(void)
      */
     if (speed_state == 1)
     {
-        char path[SMB_MAX_NAME + 16];
+        char path[LIB_PATH_MAX];
 
-        snprintf(
-            path,
-            sizeof(path),
-            SMB_DVD_PATH "/%s",
-            iso_info_name
-        );
+        lib_iso_path(path, sizeof(path));
 
         speed_state =
             iso_speed_test(
@@ -2908,14 +2972,9 @@ static void update_iso_info(void)
     /* Teste da libdvdnav, um frame depois do pedido (como o speed test). */
     if (nav_state == 1)
     {
-        char path[SMB_MAX_NAME + 16];
+        char path[LIB_PATH_MAX];
 
-        snprintf(
-            path,
-            sizeof(path),
-            SMB_DVD_PATH "/%s",
-            iso_info_name
-        );
+        lib_iso_path(path, sizeof(path));
 
         nav_state = nav_test(path, iso_info_size) < 0 ? -1 : 2;
         return;
@@ -3921,7 +3980,7 @@ static void update_frame(void)
      */
     if (frame_state == 1)
     {
-        char path[SMB_MAX_NAME + 16];
+        char path[LIB_PATH_MAX];
 
         if (!frame_pixels)
             frame_pixels = memalign(128, FRAME_MAX_WIDTH * FRAME_MAX_HEIGHT * 2);
@@ -3933,7 +3992,7 @@ static void update_frame(void)
             return;
         }
 
-        snprintf(path, sizeof(path), SMB_DVD_PATH "/%s", iso_info_name);
+        lib_iso_path(path, sizeof(path));
 
         /*
          * X: navegação do DVD (libdvdnav) a partir do First Play.

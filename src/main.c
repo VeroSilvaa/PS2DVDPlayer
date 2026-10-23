@@ -267,16 +267,6 @@ static void lib_from_bdm(int kind)
 }
 
 
-/*
- * Teste de velocidade:
- * 0 = não executado, 1 = pedido (desenha "RUNNING" e executa
- * no próximo frame), 2 = concluído, -1 = erro.
- */
-
-static int speed_state = 0;
-static int nav_state = 0;        /* teste dvdnav: 0, 1 rodando, 2 ok, -1 erro */
-static IsoSpeedResult speed_results[ISO_SPEED_TESTS];
-
 
 /*
  * Teste de vídeo (primeiro quadro):
@@ -2667,8 +2657,6 @@ static void update_iso_list(void)
                 &iso_info
             );
 
-        speed_state = 0;
-        nav_state = 0;
 
         printf(
             "ISO LIST: iso_identify returned %d\n",
@@ -2936,83 +2924,7 @@ static void draw_iso_info(
      * Resultado.
      */
 
-    if (speed_state != 0)
-    {
-        int i;
-
-        if (speed_state == 1)
-        {
-            gsKit_fontm_print_scaled(
-                gsGlobal,
-                font,
-                125.0f,
-                345.0f,
-                2,
-                0.42f,
-                COLOR_WHITE,
-                "SPEED TEST RUNNING..."
-            );
-        }
-        else if (speed_state < 0)
-        {
-            gsKit_fontm_print_scaled(
-                gsGlobal,
-                font,
-                125.0f,
-                345.0f,
-                2,
-                0.42f,
-                COLOR_ERROR,
-                "SPEED TEST: OPEN FAILED"
-            );
-        }
-        else
-        {
-            /*
-             * Resultados em duas colunas.
-             */
-            for (i = 0; i < ISO_SPEED_TESTS; i++)
-            {
-                float x = (i < 3) ? 125.0f : 330.0f;
-                float y = 354.0f + (float)(i % 3) * 19.0f;
-
-                if (speed_results[i].error)
-                {
-                    snprintf(
-                        line,
-                        sizeof(line),
-                        "%3dK: ERR %d",
-                        speed_results[i].block_size / 1024,
-                        speed_results[i].error
-                    );
-                }
-                else
-                {
-                    snprintf(
-                        line,
-                        sizeof(line),
-                        "%3dK: %u KB/s",
-                        speed_results[i].block_size / 1024,
-                        (unsigned)speed_results[i].kbps
-                    );
-                }
-
-                gsKit_fontm_print_scaled(
-                    gsGlobal,
-                    font,
-                    x,
-                    y,
-                    2,
-                    0.40f,
-                    speed_results[i].error
-                        ? COLOR_ERROR
-                        : (speed_results[i].kbps >= 1300 ? COLOR_OK : COLOR_WHITE),
-                    line
-                );
-            }
-        }
-    }
-    else if (iso_info_result == 0)
+    if (iso_info_result == 0)
     {
         gsKit_fontm_print_scaled(
             gsGlobal,
@@ -3062,7 +2974,7 @@ static void draw_iso_info(
         "CIRCLE=Back"
     );
 
-    if (iso_info.dvd_parsed && iso_info.vob1_lba && speed_state != 1)
+    if (iso_info.dvd_parsed && iso_info.vob1_lba)
     {
         gsKit_fontm_print_scaled(
             gsGlobal,
@@ -3076,82 +2988,14 @@ static void draw_iso_info(
         );
     }
 
-    if (iso_info.opened && speed_state != 1)
-    {
-        gsKit_fontm_print_scaled(
-            gsGlobal,
-            font,
-            125.0f,
-            430.0f,
-            2,
-            0.38f,
-            COLOR_WHITE,
-            "TRIANGLE=Speed test  R1=Nav test (log)"
-        );
-    }
-
-    if (nav_state != 0)
-    {
-        gsKit_fontm_print_scaled(
-            gsGlobal,
-            font,
-            125.0f,
-            394.0f,
-            2,
-            0.38f,
-            nav_state < 0 ? COLOR_ERROR : COLOR_WHITE,
-            nav_state == 1 ? "NAV TEST RUNNING (see log)..." :
-            nav_state == 2 ? "NAV TEST DONE (see log)" :
-                             "NAV TEST FAILED (see log)"
-        );
-    }
 }
 
 
 static void update_iso_info(void)
 {
-    /*
-     * Executa o teste um frame depois do pedido, para que
-     * "SPEED TEST RUNNING..." apareça antes do bloqueio.
-     */
-    if (speed_state == 1)
-    {
-        char path[LIB_PATH_MAX];
-
-        lib_iso_path(path, sizeof(path));
-
-        speed_state =
-            iso_speed_test(
-                path,
-                iso_info_size,
-                speed_results
-            ) < 0 ? -1 : 2;
-
-        return;
-    }
-
-    /* Teste da libdvdnav, um frame depois do pedido (como o speed test). */
-    if (nav_state == 1)
-    {
-        char path[LIB_PATH_MAX];
-
-        lib_iso_path(path, sizeof(path));
-
-        nav_state = nav_test(path, iso_info_size) < 0 ? -1 : 2;
-        return;
-    }
-
     if (input_pressed(PAD_CIRCLE))
     {
         current_screen = SCREEN_ISO_LIST;
-        return;
-    }
-
-    if (iso_info.opened && input_pressed(PAD_R1))
-    {
-        nav_state = 1;
-
-        printf("ISO INFO: dvdnav test requested\n");
         return;
     }
 
@@ -3173,16 +3017,6 @@ static void update_iso_info(void)
         printf("ISO INFO: video playback requested (%s)\n",
                play_from_start ? iso_info.fp_desc : "main title");
         return;
-    }
-
-    if (
-        iso_info.opened &&
-        input_pressed(PAD_TRIANGLE)
-    )
-    {
-        speed_state = 1;
-
-        printf("ISO INFO: speed test requested\n");
     }
 }
 
@@ -3754,8 +3588,6 @@ static void draw_frame(
     GSFONTM *font
 )
 {
-    char line[128];
-
     gsKit_clear(
         gsGlobal,
         GS_SETREG_RGBAQ(0x00, 0x00, 0x00, 0x80, 0x00)
@@ -3873,60 +3705,13 @@ static void draw_frame(
     }
 
     /*
-     * Barra de status: tempo, quadros/s, buffer, atrasos.
+     * Diagnóstico (fps, buffer, atrasos, sincronia, still, botões)
+     * só no log (play_stats); a tela mostra o vídeo e a barra.
      */
-    if (frame_info.frame_us > 0 && !play_bar)
-    {
-        u32 secs = (u32)(((u64)frame_info.frames * frame_info.frame_us) / 1000000ULL);
-
-        snprintf(
-            line,
-            sizeof(line),
-            "%02u:%02u  %d.%d fps  buf %u KB  dec %u ms  late %d  a-v %d ms",
-            secs / 60,
-            secs % 60,
-            fps_x10 / 10,
-            fps_x10 % 10,
-            (unsigned)(frame_info.buffered / 1024),
-            (unsigned)frame_info.decode_ms,
-            play_late,
-            frame_info.nav ? (int)(audio_stats()->av_now / 90) : 0
-        );
-
-        gsKit_fontm_print_scaled(gsGlobal, font, 20.0f, 10.0f, 3, 0.36f, COLOR_OK, line);
-    }
-
-    /*
-     * Navegação: still e número de botões do menu.
-     */
-    if (frame_info.nav && frame_state == 2 && !play_bar)
-    {
-        line[0] = '\0';
-
-        if (frame_info.still && frame_info.still_len == 0xff)
-            snprintf(line, sizeof(line), "STILL (waiting)");
-        else if (frame_info.still)
-            snprintf(line, sizeof(line), "STILL %u s", (unsigned)((frame_info.still_left_ms + 999) / 1000));
-
-        if (frame_info.buttons > 0)
-        {
-            int n = strlen(line);
-
-            snprintf(line + n, sizeof(line) - n, "%sMENU: %d buttons",
-                     n ? "  " : "", frame_info.buttons);
-        }
-
-        if (line[0])
-            gsKit_fontm_print_scaled(gsGlobal, font, 20.0f, 432.0f, 3, 0.36f, COLOR_OK, line);
-    }
 
     if (frame_state == 1)
         gsKit_fontm_print_scaled(gsGlobal, font, 200.0f, 220.0f, 3, 0.48f, COLOR_WHITE, "OPENING VIDEO...");
-    else if (frame_state == 5)
-    {
-        snprintf(line, sizeof(line), "BUFFERING %u KB", (unsigned)(frame_info.buffered / 1024));
-        gsKit_fontm_print_scaled(gsGlobal, font, 200.0f, 220.0f, 3, 0.48f, COLOR_WHITE, line);
-    }
+    /* frame_state 5 (enchendo o buffer após um salto): sem texto, só no log */
     else if (frame_state == 6)
         gsKit_fontm_print_scaled(gsGlobal, font, 260.0f, 220.0f, 3, 0.55f, COLOR_WHITE, "PAUSED");
     else if (frame_state == 4)
@@ -3944,24 +3729,9 @@ static void draw_frame(
                                  COLOR_WHITE, play_osd);
     }
 
+    /* sem ajuda fixa sobre o vídeo: os atalhos aparecem na barra (SELECT) */
     if (play_bar)
-    {
         draw_play_bar(gsGlobal, font);
-        return;
-    }
-
-    {
-        int part, parts;
-
-        gsKit_fontm_print_scaled(
-            gsGlobal, font, 20.0f, 455.0f, 3, 0.36f, COLOR_WHITE,
-            (frame_info.nav && frame_info.buttons > 0) ?
-                "D-PAD=Move  CROSS=Select  SELECT=Controls  CIRCLE=Stop" :
-            (frame_info.nav && nav_chapter_info(&part, &parts)) ?
-                "L1/R1=Chapter  R2=Audio  START=Play/Pause  TRIANGLE=Menu  SELECT=Controls" :
-                "START=Play/Pause  SELECT=Controls  CIRCLE=Stop"
-        );
-    }
 }
 
 

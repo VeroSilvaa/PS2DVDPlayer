@@ -1836,7 +1836,7 @@ static void format_size(
     snprintf(
         buffer,
         size,
-        "%llu.%02llu GB",
+        "%llu,%02llu GB",
         (unsigned long long)(gib100 / 100ULL),
         (unsigned long long)(gib100 % 100ULL)
     );
@@ -1848,258 +1848,67 @@ static void draw_iso_list(
     GSFONTM *font
 )
 {
-    char line[160];
+    char line[LIB_DIR_MAX + 32];
+    float x;
     int i;
 
+    (void)font;
 
-    gsKit_clear(
-        gsGlobal,
-        COLOR_BG
-    );
+    /* subtítulo: fonte + pasta (lib_label, ex. "USB usb0:  /FILMES") */
+    ui_screen_begin(gsGlobal, lib_label);
 
-
-    gsKit_fontm_print_scaled(
-        gsGlobal,
-        font,
-        215.0f,
-        30.0f,
-        2,
-        0.85f,
-        COLOR_WHITE,
-        "DVD LIBRARY"
-    );
-
-
-    gsKit_prim_sprite(
-        gsGlobal,
-        90.0f,
-        70.0f,
-        550.0f,
-        450.0f,
-        2,
-        COLOR_PANEL
-    );
-
-
-    snprintf(
-        line,
-        sizeof(line),
-        "%s  (%d ISO)",
-        lib_label,
-        lib_count
-    );
-
-    gsKit_fontm_print_scaled(
-        gsGlobal,
-        font,
-        125.0f,
-        80.0f,
-        2,
-        0.40f,
-        COLOR_OK,
-        line
-    );
-
+    ui_rect(48, 114, 544, ISO_LIST_VISIBLE * 36 + 12, UI_PANEL);
+    ui_border(48, 114, 544, ISO_LIST_VISIBLE * 36 + 12, 2, UI_EDGE);
 
     if (lib_count == 0)
     {
-        gsKit_fontm_print_scaled(
-            gsGlobal,
-            font,
-            125.0f,
-            130.0f,
-            2,
-            0.45f,
-            COLOR_DISABLED,
-            "No ISO files found in /FILMES"
-        );
+        snprintf(line, sizeof(line), "Nenhum arquivo .iso em %s", lib_dir);
+        ui_text_center(320, 240, line, UI_DIM);
     }
 
-
-    for (
-        i = 0;
-        i < ISO_LIST_VISIBLE;
-        i++
-    )
+    for (i = 0; i < ISO_LIST_VISIBLE; i++)
     {
         int index = iso_scroll + i;
-        float y = 105.0f + (float)i * 36.0f;
-        char name[40];
+        float y = 120 + i * 36;
         char size_text[24];
-        size_t len;
 
         if (index >= lib_count)
             break;
 
-
         if (index == iso_selected)
         {
-            gsKit_prim_sprite(
-                gsGlobal,
-                110.0f,
-                y,
-                530.0f,
-                y + 32.0f,
-                3,
-                COLOR_SELECTED
-            );
+            ui_vgradient(56, y, 528, 34, ui_rgba(0x2A, 0x66, 0xC8, 0x80), ui_rgba(0x16, 0x3C, 0x86, 0x80));
+            ui_border(56, y, 528, 34, 2, ui_rgba(0x7C, 0xB8, 0xFF, 0x80));
         }
 
+        ui_icon(UI_ICON_DISC, 66, y + 5, 24);
+        ui_text_fit(102, y + 3, 360, lib_files[index].name, UI_TEXT);
 
-        /*
-         * Nome truncado para caber no painel.
-         */
-
-        len = strlen(lib_files[index].name);
-
-        if (len > 28)
-        {
-            snprintf(
-                name,
-                sizeof(name),
-                "%.25s...",
-                lib_files[index].name
-            );
-        }
-        else
-        {
-            snprintf(
-                name,
-                sizeof(name),
-                "%s",
-                lib_files[index].name
-            );
-        }
-
-
-        gsKit_fontm_print_scaled(
-            gsGlobal,
-            font,
-            120.0f,
-            y + 6.0f,
-            2,
-            0.42f,
-            COLOR_WHITE,
-            name
-        );
-
-
-        format_size(
-            size_text,
-            sizeof(size_text),
-            lib_files[index].size
-        );
-
-        gsKit_fontm_print_scaled(
-            gsGlobal,
-            font,
-            440.0f,
-            y + 6.0f,
-            2,
-            0.40f,
-            COLOR_WHITE,
-            size_text
-        );
+        format_size(size_text, sizeof(size_text), lib_files[index].size);
+        ui_text_right(572, y + 3, size_text, index == iso_selected ? UI_TEXT : UI_DIM);
     }
 
-
-    /*
-     * Indicadores de rolagem.
-     */
-
+    /* mais itens acima/abaixo */
     if (iso_scroll > 0)
-    {
-        gsKit_fontm_print_scaled(
-            gsGlobal,
-            font,
-            510.0f,
-            80.0f,
-            2,
-            0.40f,
-            COLOR_WHITE,
-            "^"
-        );
-    }
+        ui_triangle(310, 112, 330, 112, 320, 104, UI_DIM);
 
     if (iso_scroll + ISO_LIST_VISIBLE < lib_count)
+        ui_triangle(310, 418, 330, 418, 320, 426, UI_DIM);
+
+    /* rodapé */
+    ui_footer_line();
+    x = 32;
+
+    if (lib_count > 0)
+        x += ui_button_hint(x, UI_FOOTER_Y, UI_BTN_CROSS, "Selecionar");
+
+    ui_button_hint(x, UI_FOOTER_Y, UI_BTN_CIRCLE, "Voltar");
+
+    if (lib_count > 0)
     {
-        gsKit_fontm_print_scaled(
-            gsGlobal,
-            font,
-            510.0f,
-            395.0f,
-            2,
-            0.40f,
-            COLOR_WHITE,
-            "v"
-        );
+        snprintf(line, sizeof(line), "%d de %d", iso_selected + 1, lib_count);
+        ui_text_right(608, UI_FOOTER_Y, line, UI_DIM);
     }
-
-
-    /*
-     * Tamanho exato do item selecionado.
-     */
-
-    if (
-        iso_selected >= 0 &&
-        iso_selected < lib_count
-    )
-    {
-        snprintf(
-            line,
-            sizeof(line),
-            "%d/%d  %llu bytes",
-            iso_selected + 1,
-            lib_count,
-            (unsigned long long)
-                lib_files[iso_selected].size
-        );
-
-        gsKit_fontm_print_scaled(
-            gsGlobal,
-            font,
-            125.0f,
-            405.0f,
-            2,
-            0.40f,
-            COLOR_WHITE,
-            line
-        );
-    }
-
-
-    gsKit_fontm_print_scaled(
-        gsGlobal,
-        font,
-        125.0f,
-        430.0f,
-        2,
-        0.38f,
-        COLOR_WHITE,
-        "UP/DOWN=Select"
-    );
-
-    gsKit_fontm_print_scaled(
-        gsGlobal,
-        font,
-        270.0f,
-        430.0f,
-        2,
-        0.38f,
-        COLOR_WHITE,
-        "CROSS=Open"
-    );
-
-    gsKit_fontm_print_scaled(
-        gsGlobal,
-        font,
-        390.0f,
-        430.0f,
-        2,
-        0.38f,
-        COLOR_WHITE,
-        "CIRCLE=Back"
-    );
 }
 
 

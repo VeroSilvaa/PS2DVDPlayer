@@ -61,6 +61,8 @@ u64 ui_rgba(int r, int g, int b, int a);
 void ui_rect(float x, float y, float w, float h, u64 color);
 void ui_vgradient(float x, float y, float w, float h, u64 top, u64 bottom);
 
+void ui_triangle(float x1, float y1, float x2, float y2, float x3, float y3, u64 color);
+
 /* Borda de thick px por dentro do retângulo (use 2: o 1 px cintila). */
 void ui_border(float x, float y, float w, float h, int thick, u64 color);
 

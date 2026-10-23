@@ -223,6 +223,14 @@ void ui_vgradient(float x, float y, float w, float h, u64 top, u64 bottom)
 }
 
 
+void ui_triangle(float x1, float y1, float x2, float y2, float x3, float y3, u64 color)
+{
+    alpha_on();
+    gsKit_prim_triangle(gs, x1, y1, x2, y2, x3, y3, Z_UI, color);
+    alpha_off();
+}
+
+
 void ui_border(float x, float y, float w, float h, int thick, u64 color)
 {
     ui_rect(x, y, w, thick, color);

@@ -19,6 +19,7 @@
 #include "audio.h"
 #include "input.h"
 #include "memcard.h"
+#include "netcfg.h"
 #include "network.h"
 
 #include "bdm.h"
@@ -343,6 +344,48 @@ static void make_ip_string(
         static_values[row][2],
         static_values[row][3]
     );
+}
+
+
+/*
+ * Preferências salvas (netcfg) <-> valores da tela SMB.
+ * Linhas de static_values: 0 IP, 1 MASK, 2 GATEWAY, 3 DNS, 4 servidor.
+ */
+static int net_applied = 0;     /* 1 depois do primeiro APPLY na sessão */
+
+static void netcfg_to_ui(void)
+{
+    const NetConfig *c = netcfg_get();
+    int i;
+
+    smb_mode = c->dhcp ? NETWORK_DHCP : NETWORK_STATIC;
+
+    for (i = 0; i < 4; i++)
+    {
+        static_values[0][i] = c->ip[i];
+        static_values[1][i] = c->mask[i];
+        static_values[2][i] = c->gateway[i];
+        static_values[3][i] = c->dns[i];
+        static_values[SMB_SERVER_ROW][i] = c->server[i];
+    }
+}
+
+
+static void ui_to_netcfg(void)
+{
+    NetConfig *c = netcfg_get();
+    int i;
+
+    c->dhcp = smb_mode == NETWORK_DHCP;
+
+    for (i = 0; i < 4; i++)
+    {
+        c->ip[i] = static_values[0][i];
+        c->mask[i] = static_values[1][i];
+        c->gateway[i] = static_values[2][i];
+        c->dns[i] = static_values[3][i];
+        c->server[i] = static_values[SMB_SERVER_ROW][i];
+    }
 }
 
 
@@ -1354,6 +1397,22 @@ static void smb_apply(void)
 
 
     /*
+     * Salva as preferências no Memory Card (só se mudaram).
+     */
+
+    ui_to_netcfg();
+    net_applied = 1;
+
+    result = netcfg_save();
+
+    printf(
+        "SMB APPLY: netcfg_save returned %d (%s)\n",
+        result,
+        result > 0 ? netcfg_path() : result == 0 ? "unchanged" : "error"
+    );
+
+
+    /*
      * Limpa tentativa anterior.
      */
 
@@ -1517,10 +1576,17 @@ static void update_main(void)
 
             net = network_get_info();
 
-            if (net)
-                smb_mode = net->mode;
+            /*
+             * Antes do primeiro APPLY a tela mostra as preferências
+             * salvas (netcfg_to_ui no boot); depois, a rede atual.
+             */
+            if (net_applied)
+            {
+                if (net)
+                    smb_mode = net->mode;
 
-            load_current_network_values();
+                load_current_network_values();
+            }
 
             smb_selected = SMB_ITEM_MODE;
             smb_editing = 0;
@@ -1803,14 +1869,15 @@ static void smb_test(void)
 
 
     /*
-     * Share/usuário/senha ainda fixos (etapa A2b).
+     * Share/usuário/senha das preferências (netcfg; padrão
+     * samba/guest/sem senha). Edição na tela: etapa futura.
      */
 
     result = smb_connect(
         server,
-        "samba",
-        "guest",
-        ""
+        netcfg_get()->share,
+        netcfg_get()->user,
+        netcfg_get()->password
     );
 
 
@@ -4933,6 +5000,18 @@ int main(
         "MAIN: memcard_init returned %d\n",
         memcard_init()
     );
+
+
+    /*
+     * PREFERÊNCIAS DE REDE (Memory Card) -> tela SMB
+     */
+
+    printf(
+        "MAIN: netcfg_load returned %d\n",
+        netcfg_load()
+    );
+
+    netcfg_to_ui();
 
 
     /*

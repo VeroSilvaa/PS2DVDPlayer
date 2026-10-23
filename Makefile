@@ -4,6 +4,7 @@ EE_OBJS = \
 	build/main.o \
 	build/input.o \
 	build/memcard.o \
+	build/netcfg.o \
 	build/iop_boot.o \
 	build/network.o \
 	build/smb.o \
@@ -118,6 +119,11 @@ build/input.o: src/input.c
 		-c $< -o $@
 
 build/memcard.o: src/memcard.c
+	@mkdir -p $(@D)
+	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) \
+		-c $< -o $@
+
+build/netcfg.o: src/netcfg.c
 	@mkdir -p $(@D)
 	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) \
 		-c $< -o $@

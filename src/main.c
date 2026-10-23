@@ -307,13 +307,46 @@ static u64 play_osd_until = 0;
 /*
  * Barra de controle do player (SELECT mostra/esconde).
  */
-enum { BAR_PREV = 0, BAR_PLAY, BAR_NEXT, BAR_MENU, BAR_STOP, BAR_COUNT };
+enum { BAR_PREV = 0, BAR_PLAY, BAR_NEXT, BAR_AUDIO, BAR_MENU, BAR_STOP, BAR_COUNT };
 
 #define PLAY_BAR_SECONDS 5          /* some sozinha sem uso (tocando) */
 
 static int play_bar = 0;
 static int play_bar_sel = BAR_PLAY;
 static u64 play_bar_until = 0;
+
+
+/*
+ * Botões visíveis na barra: Audio só com mais de uma faixa de áudio
+ * no título (o R2 funciona sempre e avisa se há só uma).
+ */
+static int bar_has(int id)
+{
+    char label[48];
+
+    if (id == BAR_AUDIO)
+        return frame_info.nav && nav_audio_info(label, sizeof(label)) > 1;
+
+    return 1;
+}
+
+
+/* Próximo botão visível na direção dir (+1/-1). */
+static int bar_step(int from, int dir)
+{
+    int id = from;
+    int n;
+
+    for (n = 0; n < BAR_COUNT; n++)
+    {
+        id = (id + (dir > 0 ? 1 : BAR_COUNT - 1)) % BAR_COUNT;
+
+        if (bar_has(id))
+            return id;
+    }
+
+    return from;
+}
 static u16 *frame_pixels = NULL;
 static int frame_upload = 0;
 static GSTEXTURE frame_tex;
@@ -3573,6 +3606,14 @@ static void draw_bar_icon(GSGLOBAL *gsGlobal, int id, float cx, float cy, u64 c)
             gsKit_prim_sprite(gsGlobal, cx + 6, cy - 7, cx + 9, cy + 7, 4, c);
             break;
 
+        case BAR_AUDIO:
+            /* alto-falante: corpo + cone */
+            gsKit_prim_sprite(gsGlobal, cx - 9, cy - 3, cx - 4, cy + 3, 4, c);
+            gsKit_prim_triangle(gsGlobal, cx - 4, cy - 3, cx + 4, cy - 9, cx + 4, cy + 9, 4, c);
+            gsKit_prim_triangle(gsGlobal, cx - 4, cy - 3, cx - 4, cy + 3, cx + 4, cy + 9, 4, c);
+            gsKit_prim_sprite(gsGlobal, cx + 6, cy - 4, cx + 8, cy + 4, 4, c);
+            break;
+
         case BAR_MENU:
             gsKit_prim_sprite(gsGlobal, cx - 8, cy - 7, cx + 8, cy - 4, 4, c);
             gsKit_prim_sprite(gsGlobal, cx - 8, cy - 1, cx + 8, cy + 2, 4, c);
@@ -3594,7 +3635,7 @@ static void draw_play_bar(GSGLOBAL *gsGlobal, GSFONTM *font)
 {
     /* nome do botão + atalho equivalente */
     static const char *names[BAR_COUNT] = {
-        "Previous  (L1)", "Play  (START)", "Next  (R1)", "Menu  (TRIANGLE)", "Stop  (CIRCLE)"
+        "Previous  (L1)", "Play  (START)", "Next  (R1)", "Audio  (R2)", "Menu  (TRIANGLE)", "Stop  (CIRCLE)"
     };
     char line[96];
     char name[48];
@@ -3650,23 +3691,60 @@ static void draw_play_bar(GSGLOBAL *gsGlobal, GSFONTM *font)
         gsKit_fontm_print_scaled(gsGlobal, font, 548.0f, 410.0f, 4, 0.34f, COLOR_WHITE, t_total);
     }
 
-    /* botões */
-    for (i = 0, x = 20.0f; i < BAR_COUNT; i++, x += 58.0f)
+    /* o botão escolhido pode ter sumido (ex.: título com uma faixa) */
+    if (!bar_has(play_bar_sel))
+        play_bar_sel = BAR_PLAY;
+
+    /* botões visíveis, lado a lado */
+    for (i = 0, x = 20.0f; i < BAR_COUNT; i++)
     {
         int sel = i == play_bar_sel;
+
+        if (!bar_has(i))
+            continue;
 
         gsKit_prim_sprite(gsGlobal, x, 432.0f, x + 50.0f, 464.0f, 4,
                           sel ? COLOR_SELECTED : COLOR_PANEL);
 
         draw_bar_icon(gsGlobal, i, x + 25.0f, 448.0f, sel ? COLOR_WHITE : COLOR_DISABLED);
+
+        x += 58.0f;
     }
 
     snprintf(line, sizeof(line), "%s", names[play_bar_sel]);
+
     if (play_bar_sel == BAR_PLAY && frame_state != 6)
         snprintf(line, sizeof(line), "Pause  (START)");
 
-    gsKit_fontm_print_scaled(gsGlobal, font, 320.0f, 434.0f, 4, 0.40f, COLOR_WHITE, line);
-    gsKit_fontm_print_scaled(gsGlobal, font, 320.0f, 452.0f, 4, 0.32f, COLOR_DISABLED,
+    /* Audio: idioma/formato da faixa atual, ex. "pt 5.1 - 2/2" */
+    if (play_bar_sel == BAR_AUDIO)
+    {
+        char track[48];
+        char code[3] = { 0 };
+        const char *fmt;
+        int cur = 0, count = 0;
+
+        if (nav_audio_info(track, sizeof(track)) > 0 &&
+            sscanf(track, "AUDIO %d/%d", &cur, &count) == 2)
+        {
+            char *paren = strchr(track, '(');
+
+            if (paren && paren[1] && paren[2])
+            {
+                code[0] = paren[1];
+                code[1] = paren[2];
+            }
+
+            fmt = strstr(track, "5.1") ? "5.1" : strstr(track, "2.0") ? "2.0" :
+                  strstr(track, "mono") ? "mono" : "";
+
+            snprintf(line, sizeof(line), "Audio (R2): %s %s - %d/%d", code, fmt, cur, count);
+        }
+    }
+
+    /* à direita dos botões (com os 6, o último termina em x = 360) */
+    gsKit_fontm_print_scaled(gsGlobal, font, 376.0f, 434.0f, 4, 0.40f, COLOR_WHITE, line);
+    gsKit_fontm_print_scaled(gsGlobal, font, 376.0f, 452.0f, 4, 0.32f, COLOR_DISABLED,
                              "LEFT/RIGHT=Choose  CROSS=OK  SELECT=Hide");
 }
 
@@ -3857,8 +3935,14 @@ static void draw_frame(
         gsKit_fontm_print_scaled(gsGlobal, font, 230.0f, 220.0f, 3, 0.50f, COLOR_WHITE, "END OF VIDEO");
     }
 
+    /* aviso (capítulo/áudio) alinhado à direita: ~8,5 px por caractere em 0.45 */
     if (play_osd_until && GetTimerSystemTime() < play_osd_until)
-        gsKit_fontm_print_scaled(gsGlobal, font, 470.0f, 40.0f, 4, 0.45f, COLOR_WHITE, play_osd);
+    {
+        float ox = 625.0f - 8.5f * (float)strlen(play_osd);
+
+        gsKit_fontm_print_scaled(gsGlobal, font, ox < 20.0f ? 20.0f : ox, 40.0f, 4, 0.45f,
+                                 COLOR_WHITE, play_osd);
+    }
 
     if (play_bar)
     {
@@ -3874,7 +3958,7 @@ static void draw_frame(
             (frame_info.nav && frame_info.buttons > 0) ?
                 "D-PAD=Move  CROSS=Select  SELECT=Controls  CIRCLE=Stop" :
             (frame_info.nav && nav_chapter_info(&part, &parts)) ?
-                "L1/R1=Chapter  START=Play/Pause  TRIANGLE=Menu  SELECT=Controls" :
+                "L1/R1=Chapter  R2=Audio  START=Play/Pause  TRIANGLE=Menu  SELECT=Controls" :
                 "START=Play/Pause  SELECT=Controls  CIRCLE=Stop"
         );
     }
@@ -3984,12 +4068,12 @@ static int play_chapter(int delta, u64 now)
 
 /*
  * Ações do player: as mesmas pela barra (X) e pelos atalhos
- * (L1 anterior, START play/pausa, R1 próximo, TRIÂNGULO menu,
- * CÍRCULO parar). Com a barra aberta, o atalho destaca o botão dele.
+ * (L1 anterior, START play/pausa, R1 próximo, R2 áudio, TRIÂNGULO
+ * menu, CÍRCULO parar). Com a barra aberta, o atalho destaca o botão.
  */
 static void play_action(int id, u64 now)
 {
-    if (play_bar)
+    if (play_bar && bar_has(id))
     {
         play_bar_sel = id;
         play_bar_until = now + (u64)kBUSCLK * PLAY_BAR_SECONDS;
@@ -4011,6 +4095,16 @@ static void play_action(int id, u64 now)
             }
             else if (frame_state == 2)
                 frame_state = 6;
+            break;
+
+        case BAR_AUDIO:
+            if (frame_info.nav)
+            {
+                if (nav_audio_cycle(play_osd, sizeof(play_osd)))
+                    audio_select_stream(nav_audio_stream());
+
+                play_osd_until = now + (u64)kBUSCLK * 3;
+            }
             break;
 
         case BAR_MENU:
@@ -4044,6 +4138,14 @@ static int play_shortcuts(u64 now)
         play_action(BAR_PREV, now);
     else if (input_pressed(PAD_TRIANGLE))
         play_action(BAR_MENU, now);
+    else if (input_pressed(PAD_R2))
+        play_action(BAR_AUDIO, now);
+    else if (input_pressed(PAD_L2) && frame_info.nav)
+    {
+        /* legendas: por enquanto só informa (exibição em etapa futura) */
+        nav_spu_count(play_osd, sizeof(play_osd));
+        play_osd_until = now + (u64)kBUSCLK * 3;
+    }
     else
         return 0;
 
@@ -4077,7 +4179,7 @@ static int play_bar_input(u64 now)
 
     if (input_pressed(PAD_LEFT) || input_pressed(PAD_RIGHT))
     {
-        play_bar_sel = (play_bar_sel + (input_pressed(PAD_RIGHT) ? 1 : BAR_COUNT - 1)) % BAR_COUNT;
+        play_bar_sel = bar_step(play_bar_sel, input_pressed(PAD_RIGHT) ? 1 : -1);
         play_bar_until = now + (u64)kBUSCLK * PLAY_BAR_SECONDS;
         return 1;
     }

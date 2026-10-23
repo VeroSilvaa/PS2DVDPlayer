@@ -58,7 +58,8 @@ static int last_buttons = -1;
 static u32 spu_clut[16];
 static u32 clut_serial = 0;
 static int spu_stream = 0;
-static int audio_stream = 0;
+static int audio_stream = 0;        /* faixa física escolhida pela VM */
+static int audio_user = -1;         /* faixa física escolhida pelo usuário */
 
 /*
  * Linha do tempo contínua: cada PGC (ex.: um clipe) recomeça seus
@@ -396,7 +397,7 @@ u32 nav_clut_serial(void)
 
 int nav_audio_stream(void)
 {
-    return audio_stream;
+    return audio_user >= 0 ? audio_user : audio_stream;
 }
 
 
@@ -651,6 +652,163 @@ int nav_menu(void)
 }
 
 
+/* ============================================================
+ * FAIXAS DE ÁUDIO
+ * ============================================================ */
+
+#define NAV_AUDIO_MAX 8
+
+/*
+ * Faixas AC3 do título (só AC3 é decodificado): número lógico,
+ * físico, canais e idioma. Devolve quantas.
+ */
+static int audio_tracks(int *logical, int *physical, int *channels, u16 *lang)
+{
+    int n;
+    int count = 0;
+
+    /* no menu a VM devolve a mesma faixa para todos os números */
+    if (!nav || cur_domain() != DVD_DOMAIN_VTSTitle)
+        return 0;
+
+    for (n = 0; n < NAV_AUDIO_MAX; n++)
+    {
+        audio_attr_t attr;
+        int p = dvdnav_get_audio_logical_stream(nav, (uint8_t)n);
+
+        if (p < 0)
+            continue;
+
+        if (dvdnav_get_audio_attr(nav, (uint8_t)n, &attr) != DVDNAV_STATUS_OK ||
+            attr.audio_format != 0)     /* 0 = AC3 */
+            continue;
+
+        logical[count] = n;
+        physical[count] = p & 7;
+        channels[count] = attr.channels + 1;
+        lang[count] = attr.lang_type == 1 ? attr.lang_code : 0;
+        count++;
+    }
+
+    return count;
+}
+
+
+static void audio_describe(char *out, int size, int index, int count,
+                           const int *channels, const u16 *lang)
+{
+    char code[3] = { '?', '?', 0 };
+    int ch = channels[index];
+
+    if (lang[index])
+    {
+        code[0] = (char)(lang[index] >> 8);
+        code[1] = (char)(lang[index] & 0xff);
+    }
+
+    snprintf(out, size, "AUDIO %d/%d: AC3 %s (%s)", index + 1, count,
+             ch >= 6 ? "5.1" : ch == 2 ? "2.0" : ch == 1 ? "mono" : "multi", code);
+}
+
+
+int nav_audio_info(char *label, int size)
+{
+    int logical[NAV_AUDIO_MAX], physical[NAV_AUDIO_MAX], channels[NAV_AUDIO_MAX];
+    u16 lang[NAV_AUDIO_MAX];
+    int count = audio_tracks(logical, physical, channels, lang);
+    int cur = nav_audio_stream();
+    int i;
+
+    for (i = 0; i < count; i++)
+    {
+        if (physical[i] == cur)
+        {
+            audio_describe(label, size, i, count, channels, lang);
+            return count;
+        }
+    }
+
+    return 0;
+}
+
+
+int nav_audio_cycle(char *label, int size)
+{
+    int logical[NAV_AUDIO_MAX], physical[NAV_AUDIO_MAX], channels[NAV_AUDIO_MAX];
+    u16 lang[NAV_AUDIO_MAX];
+    int count = audio_tracks(logical, physical, channels, lang);
+    int cur = nav_audio_stream();
+    int next = 0;
+    int i;
+
+    if (count == 0)
+    {
+        snprintf(label, size, "No AC3 audio track");
+        return 0;
+    }
+
+    for (i = 0; i < count; i++)
+    {
+        if (physical[i] == cur)
+        {
+            next = (i + 1) % count;
+            break;
+        }
+    }
+
+    audio_describe(label, size, next, count, channels, lang);
+
+    if (count == 1 && physical[0] == cur)
+        return 0;   /* só uma faixa: nada a trocar */
+
+    audio_user = physical[next];
+
+    frame_logf("NAV: audio track -> logical %d physical %d (%s)\n",
+               logical[next], physical[next], label);
+
+    return 1;
+}
+
+
+/* ============================================================
+ * LEGENDAS (por enquanto só contagem)
+ * ============================================================ */
+
+int nav_spu_count(char *label, int size)
+{
+    int n;
+    int count = 0;
+    u16 first = 0;
+
+    if (!nav || cur_domain() != DVD_DOMAIN_VTSTitle)
+    {
+        snprintf(label, size, "NO SUBTITLES");
+        return 0;
+    }
+
+    for (n = 0; n < 32; n++)
+    {
+        if (dvdnav_get_spu_logical_stream(nav, (uint8_t)n) < 0)
+            continue;
+
+        if (count == 0)
+            first = dvdnav_spu_stream_to_lang(nav, (uint8_t)n);
+
+        count++;
+    }
+
+    if (count == 0)
+        snprintf(label, size, "NO SUBTITLES");
+    else
+        snprintf(label, size, "SUBTITLES: %d (%c%c) - NOT SUPPORTED YET", count,
+                 first != 0xffff ? (char)(first >> 8) : '?',
+                 first != 0xffff ? (char)(first & 0xff) : '?');
+
+    frame_logf("NAV: subtitles: %d track(s)\n", count);
+    return count;
+}
+
+
 /*
  * Pelo número do capítulo (e não next/prev_pg_search): num disco com
  * um clipe por PGC, o next_pg do último programa executa os comandos
@@ -704,6 +862,7 @@ int nav_open(const char *path, u64 size, int prefetch)
     last_buttons = -1;
     spu_stream = 0;
     audio_stream = 0;
+    audio_user = -1;
     pts_offset = 0;
     last_e_ptm = -1;
     chapters_free();

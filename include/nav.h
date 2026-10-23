@@ -100,8 +100,24 @@ int nav_play_time(s64 pts, u32 *ms, u32 *total_ms, int *part, int *parts);
 const u32 *nav_clut(void);
 u32 nav_clut_serial(void);
 
-/* Stream de áudio ativo (0..7). */
+/* Stream de áudio ativo (0..7): o do usuário, se escolheu; senão o da VM. */
 int nav_audio_stream(void);
+
+/*
+ * Faixas de áudio AC3 do título atual.
+ * nav_audio_info: descrição da faixa ativa ("AUDIO 1/2: AC3 2.0 (pt)"),
+ * retorna o número de faixas (0 = nenhuma/fora do título).
+ * nav_audio_cycle: passa para a próxima faixa; 1 se trocou (depois:
+ * audio_resync). label recebe a descrição da faixa nova.
+ */
+int nav_audio_info(char *label, int size);
+int nav_audio_cycle(char *label, int size);
+
+/*
+ * Legendas do título atual: quantas faixas existem (0 fora do título).
+ * label: "NO SUBTITLES" ou a contagem (exibição ainda não suportada).
+ */
+int nav_spu_count(char *label, int size);
 
 /*
  * Deslocamento (90 kHz) a somar aos PTS dos packs seguintes ao último

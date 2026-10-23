@@ -415,10 +415,16 @@ static void demux_pack(const u8 *p)
                          (p[hdr + 1] & 0x80) != 0, ring_wr);
             }
             else if (payload_len > 1 && payload < ISO_SECTOR_SIZE &&
-                     p[payload] == 0x80 + nav_audio_stream())
+                     (p[payload] & 0xF8) == 0x80)
             {
-                /* áudio AC3 */
-                audio_feed_ac3(p + payload + 1, payload_len - 1, pes_pts_nav(p, hdr));
+                /*
+                 * Áudio AC3 (0x80..0x87): todas as faixas são guardadas
+                 * para a troca ser imediata; segue a faixa da VM ou a
+                 * escolhida pelo usuário.
+                 */
+                audio_select_stream(nav_audio_stream());
+                audio_feed_ac3(p[payload] & 7, p + payload + 1, payload_len - 1,
+                               pes_pts_nav(p, hdr));
             }
         }
 
@@ -656,6 +662,10 @@ void frame_pump(FrameInfo *info)
     {
         frame_log_flush();
         audio_pump(info->pts);
+
+        /* tempo livre entre imagens: até 2 quadros AC3 (~5 ms em 5.1) */
+        audio_decode(2);
+
         nav_pump(info);
         info->buffered = ring_fill();
         frame_log_flush();

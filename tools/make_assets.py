@@ -2,59 +2,41 @@
 """
 Gera os recursos graficos da interface (rodar no conteiner):
 
-    docker compose run --rm ps2filemanager sh tools/make_assets.sh
+    docker compose run --rm ps2dvdplayer sh tools/make_assets.sh
 
-- assets/bg_640x448.png      fundo: a arte original (16:9) cortada para
-                             4:3 pelo lado esquerdo (os simbolos ficam a
-                             direita) e reduzida para 640x448
-- assets/font_mono_8x16.png  atlas da fonte monoespacada: bytes 32..255
-                             (Windows-1252: acentos, travessao, aspas),
-                             16 por linha, celulas de 8x16, tons de cinza
-- assets/preview_font.png    previa ampliada (nao vai para o ELF)
+- assets/font_body.png/.h    Noto Sans 18 px (texto normal)
+- assets/font_large.png/.h   Noto Sans 26 px (titulos de opcoes)
+                             atlas de bytes 32..255 (Windows-1252:
+                             acentos, travessao, aspas), 16 por linha,
+                             tons de cinza; .h com celula, linha de base
+                             e largura de cada caractere
+- assets/logo.png            "PS2DVD" + "Player" em Noto Sans Bold, como
+                             no interface-model.png (nao usa o logotipo
+                             oficial "PS2")
+- assets/buttons.png/.h      botoes recortados do
+                             "Kit de Botões de Controle PlayStation.png"
+- assets/preview_*.png       previas ampliadas (nao vao para o ELF)
 
-Fonte: Noto Sans Mono (licenca OFL, third_party/fonts).
+Base: tools/make_assets.py do PS2FileManager (mesmo autor).
+Fontes: Noto Sans (licenca OFL, third_party/fonts).
 """
 
 import os
 import sys
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ASSETS = os.path.join(ROOT, "assets")
 
-BACKGROUND_SRC = os.path.join(ROOT, "Fundo Futurista Azul com Símbolos PlayStation.png")
-FONT_MONO = os.path.join(ROOT, "third_party", "fonts", "NotoSansMono-Regular.ttf")
 FONT_SANS = os.path.join(ROOT, "third_party", "fonts", "NotoSans-Regular.ttf")
+FONT_BOLD = os.path.join(ROOT, "third_party", "fonts", "NotoSans-Bold.ttf")
 
-# Fonte proporcional da interface (telas convertidas)
-SANS_SIZE = 14
-SANS_CELL_W, SANS_CELL_H = 16, 20
-SANS_BASELINE = 15
-
-SCREEN_W, SCREEN_H = 640, 448
-
-CELL_W, CELL_H = 8, 16
-FONT_SIZE = 13
-BASELINE = 12          # y da linha de base dentro da celula
 FIRST_CHAR, LAST_CHAR = 32, 255
 PER_ROW = 16
 
-
-def make_background():
-    src = Image.open(BACKGROUND_SRC).convert("RGB")
-
-    # A tela do PS2 (640x448) e exibida em 4:3: corta a largura para
-    # 4:3 tirando do lado esquerdo (so ondas); os simbolos ficam.
-    crop_w = round(src.height * 4 / 3)
-    left = max(0, src.width - crop_w)
-    cropped = src.crop((left, 0, src.width, src.height))
-
-    out = cropped.resize((SCREEN_W, SCREEN_H), Image.LANCZOS)
-    out.save(os.path.join(ASSETS, "bg_640x448.png"), optimize=True)
-
-    print("fundo: %dx%d -> corte %dx%d -> %dx%d" %
-          (src.width, src.height, cropped.width, cropped.height, SCREEN_W, SCREEN_H))
+# (nome, tamanho em px): texto normal e titulos (tela 640x480)
+FONTS = [("body", 18), ("large", 26)]
 
 
 def char_for_byte(code):
@@ -64,156 +46,145 @@ def char_for_byte(code):
         return None      # 0x81, 0x8D, 0x8F, 0x90, 0x9D: sem caractere
 
 
-def make_font():
-    font = ImageFont.truetype(FONT_MONO, FONT_SIZE)
+def make_font(name, size):
+    """
+    assets/font_<name>.png + .h. A celula sai das medidas da fonte:
+    altura = ascendente + descendente, largura = maior avanco + 2.
+    """
+    font = ImageFont.truetype(FONT_SANS, size)
+    ascent, descent = font.getmetrics()
     count = LAST_CHAR - FIRST_CHAR + 1
     rows = (count + PER_ROW - 1) // PER_ROW
 
-    atlas = Image.new("L", (PER_ROW * CELL_W, rows * CELL_H), 0)
-    draw = ImageDraw.Draw(atlas)
-
+    chars = []
     for code in range(FIRST_CHAR, LAST_CHAR + 1):
         ch = char_for_byte(code)
-        if ch is None or not ch.isprintable() or ch == "\x7f":
-            continue
+        ok = ch is not None and ch.isprintable() and ch != "\x7f"
+        chars.append(ch if ok else None)
 
-        i = code - FIRST_CHAR
-        x = (i % PER_ROW) * CELL_W
-        y = (i // PER_ROW) * CELL_H
+    cell_w = max(round(font.getlength(c)) for c in chars if c) + 2
+    cell_h = ascent + descent + 2
+    baseline = ascent + 1
 
-        # Centraliza na celula pela largura do avanco.
-        advance = font.getlength(ch)
-        dx = (CELL_W - advance) / 2
-
-        draw.text((x + dx, y + BASELINE), ch, fill=255, font=font, anchor="ls")
-
-    atlas.save(os.path.join(ASSETS, "font_mono_8x16.png"), optimize=True)
-
-    preview = atlas.resize((atlas.width * 4, atlas.height * 4), Image.NEAREST)
-    preview.save(os.path.join(ASSETS, "preview_font.png"))
-
-    print("fonte: %d caracteres, atlas %dx%d" % (count, atlas.width, atlas.height))
-
-
-def make_sans():
-    """
-    assets/font_sans_14.png + assets/font_sans_14.h (largura de cada
-    caractere, em pixels, para o texto proporcional).
-    """
-    font = ImageFont.truetype(FONT_SANS, SANS_SIZE)
-    count = LAST_CHAR - FIRST_CHAR + 1
-    rows = (count + PER_ROW - 1) // PER_ROW
-
-    atlas = Image.new("L", (PER_ROW * SANS_CELL_W, rows * SANS_CELL_H), 0)
+    atlas = Image.new("L", (PER_ROW * cell_w, rows * cell_h), 0)
     draw = ImageDraw.Draw(atlas)
     widths = []
 
-    for code in range(FIRST_CHAR, LAST_CHAR + 1):
-        ch = char_for_byte(code)
+    for i, ch in enumerate(chars):
         width = 0
 
-        if ch is not None and ch.isprintable() and ch != "\x7f":
+        if ch is not None:
+            x = (i % PER_ROW) * cell_w
+            y = (i // PER_ROW) * cell_h
 
-            i = code - FIRST_CHAR
-            x = (i % PER_ROW) * SANS_CELL_W
-            y = (i // PER_ROW) * SANS_CELL_H
-
-            draw.text((x + 1, y + SANS_BASELINE), ch, fill=255, font=font, anchor="ls")
-            width = min(SANS_CELL_W - 1, round(font.getlength(ch)))
+            # 1 px de margem a esquerda (o ui.c desenha em x - 1)
+            draw.text((x + 1, y + baseline), ch, fill=255, font=font, anchor="ls")
+            width = min(cell_w - 1, round(font.getlength(ch)))
 
         widths.append(width)
 
-    atlas.save(os.path.join(ASSETS, "font_sans_14.png"), optimize=True)
+    upper = name.upper()
+    atlas.save(os.path.join(ASSETS, "font_%s.png" % name), optimize=True)
 
-    with open(os.path.join(ASSETS, "font_sans_14.h"), "w") as out:
+    with open(os.path.join(ASSETS, "font_%s.h" % name), "w") as out:
         out.write("/* Gerado por tools/make_assets.py: Noto Sans %d px, bytes %d..%d (Windows-1252). */\n"
-                  % (SANS_SIZE, FIRST_CHAR, LAST_CHAR))
-        out.write("#define FONT_SANS_CELL_W %d\n#define FONT_SANS_CELL_H %d\n\n" % (SANS_CELL_W, SANS_CELL_H))
-        out.write("static const unsigned char font_sans_width[%d] = {\n" % count)
+                  % (size, FIRST_CHAR, LAST_CHAR))
+        out.write("#define FONT_%s_CELL_W %d\n#define FONT_%s_CELL_H %d\n\n"
+                  % (upper, cell_w, upper, cell_h))
+        out.write("static const unsigned char font_%s_width[%d] = {\n" % (name, count))
         for i in range(0, count, 16):
             out.write("    " + ", ".join("%2d" % w for w in widths[i:i + 16]) + ",\n")
         out.write("};\n")
 
     preview = atlas.resize((atlas.width * 2, atlas.height * 2), Image.NEAREST)
-    preview.save(os.path.join(ASSETS, "preview_sans.png"))
+    preview.save(os.path.join(ASSETS, "preview_font_%s.png" % name))
 
-    print("fonte sans: atlas %dx%d" % (atlas.width, atlas.height))
+    print("fonte %s (%d px): celula %dx%d, atlas %dx%d"
+          % (name, size, cell_w, cell_h, atlas.width, atlas.height))
 
 
-FONT_LOGO = os.path.join(ROOT, "third_party", "fonts", "Orbitron.ttf")
+def gradient(size, top, bottom):
+    w, h = size
+    img = Image.new("RGB", (w, h))
+    d = ImageDraw.Draw(img)
+
+    for y in range(h):
+        t = y / max(1, h - 1)
+        d.line([(0, y), (w, y)], fill=tuple(round(a + (b - a) * t) for a, b in zip(top, bottom)))
+
+    return img
 
 
 def make_logo():
     """
-    assets/logo.png: "PS2FileManager" em Orbitron (OFL) com gradiente
-    azul e brilho, fundo transparente. Desenhado em 4x e reduzido
-    (suavizacao). Nao usa o logotipo oficial "PS2".
+    assets/logo.png: "PS2DVD" (azul forte) + "Player" (azul claro) em
+    Noto Sans Bold, como no interface-model.png, com brilho azul por
+    baixo. Desenhado em 4x e reduzido (suavizacao).
     """
-    from PIL import ImageFilter
-
     scale = 4
-    size = 22 * scale
-    text = "PS2FileManager"
+    size = 40 * scale
+    parts = [("PS2DVD", (0x7C, 0xC4, 0xFF), (0x1E, 0x6C, 0xFF)),
+             ("Player", (0xF0, 0xF6, 0xFF), (0x8C, 0xBC, 0xFF))]
 
-    font = ImageFont.truetype(FONT_LOGO, size)
-    try:
-        font.set_variation_by_name("Bold")
-    except Exception:
-        pass
-
+    font = ImageFont.truetype(FONT_BOLD, size)
+    text = "".join(p[0] for p in parts)
     left, top, right, bottom = font.getbbox(text)
     pad = 6 * scale
     w = right - left + 2 * pad
     h = bottom - top + 2 * pad
 
-    mask = Image.new("L", (w, h), 0)
-    ImageDraw.Draw(mask).text((pad - left, pad - top), text, fill=255, font=font)
+    letters = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    mask_all = Image.new("L", (w, h), 0)
+    x = pad - left
 
-    # Gradiente vertical: azul claro -> azul do tema.
-    grad = Image.new("RGB", (w, h))
-    gd = ImageDraw.Draw(grad)
-    top_c, bottom_c = (0xE8, 0xF2, 0xFF), (0x2F, 0x7B, 0xFF)
-    for y in range(h):
-        t = y / max(1, h - 1)
-        gd.line([(0, y), (w, y)], fill=tuple(round(a + (b - a) * t) for a, b in zip(top_c, bottom_c)))
+    for part, c_top, c_bottom in parts:
+        mask = Image.new("L", (w, h), 0)
+        ImageDraw.Draw(mask).text((x, pad - top), part, fill=255, font=font)
+        ImageDraw.Draw(mask_all).text((x, pad - top), part, fill=255, font=font)
 
-    # Brilho: o texto borrado, azul, por baixo.
-    glow_alpha = mask.filter(ImageFilter.GaussianBlur(4 * scale)).point(lambda v: min(255, v * 2) * 0.55)
+        colored = gradient((w, h), c_top, c_bottom).convert("RGBA")
+        colored.putalpha(mask)
+        letters = Image.alpha_composite(letters, colored)
+
+        x += font.getlength(part)
+
+    glow_alpha = mask_all.filter(ImageFilter.GaussianBlur(3 * scale)).point(lambda v: int(min(255, v * 2) * 0.45))
     glow = Image.new("RGBA", (w, h), (0x2F, 0x7B, 0xFF, 0))
-    glow.putalpha(glow_alpha.convert("L"))
-
-    letters = grad.convert("RGBA")
-    letters.putalpha(mask)
+    glow.putalpha(glow_alpha)
 
     logo = Image.alpha_composite(glow, letters)
     logo = logo.resize((w // scale, h // scale), Image.LANCZOS)
     logo.save(os.path.join(ASSETS, "logo.png"), optimize=True)
+
+    preview = Image.new("RGBA", logo.size, (0x0C, 0x1C, 0x40, 255))
+    Image.alpha_composite(preview, logo).resize((logo.width * 2, logo.height * 2), Image.NEAREST) \
+        .save(os.path.join(ASSETS, "preview_logo.png"))
 
     print("logo: %dx%d" % logo.size)
 
 
 BUTTONS_SRC = os.path.join(ROOT, "Kit de Botões de Controle PlayStation.png")
 
-# Recortes do kit (1536x1024), na ordem do GfxButton (include/gfx.h).
+# Recortes do kit (1536x1024), na ordem do UiButton (include/ui.h).
 # ("circle", cx, cy, r) | ("rrect", x0, y0, x1, y1, raio) |
 # ("poly", [pontos]) | None (desenhado pelo codigo), e o tamanho final.
 BUTTONS = [
-    ("cross",    ("circle", 243, 166, 128), (20, 20)),
-    ("circle",   ("circle", 565, 166, 128), (20, 20)),
-    ("square",   ("circle", 1270, 166, 128), (20, 20)),
-    ("triangle", ("circle", 919, 166, 128), (20, 20)),
-    ("l1",       ("rrect", 118, 337, 374, 474, 34), (32, 18)),
-    ("r1",       ("rrect", 799, 337, 1061, 474, 34), (32, 18)),
+    ("cross",    ("circle", 243, 166, 128), (24, 24)),
+    ("circle",   ("circle", 565, 166, 128), (24, 24)),
+    ("square",   ("circle", 1270, 166, 128), (24, 24)),
+    ("triangle", ("circle", 919, 166, 128), (24, 24)),
+    ("l1",       ("rrect", 118, 337, 374, 474, 34), (36, 20)),
+    ("r1",       ("rrect", 799, 337, 1061, 474, 34), (36, 20)),
     ("select",   None, None),
     ("start",    None, None),
     # Direcional: a tampa da tecla "cima" do kit com uma seta clara
     # desenhada por cima (a seta original some no tamanho pequeno).
-    ("up",       ("key", "up"), (18, 18)),
-    ("down",     ("key", "down"), (18, 18)),
-    ("left",     ("key", "left"), (18, 18)),
-    ("right",    ("key", "right"), (18, 18)),
-    ("l2",       ("rrect", 444, 337, 702, 474, 34), (32, 18)),
-    ("r2",       ("rrect", 1149, 337, 1415, 474, 34), (32, 18)),
+    ("up",       ("key", "up"), (22, 22)),
+    ("down",     ("key", "down"), (22, 22)),
+    ("left",     ("key", "left"), (22, 22)),
+    ("right",    ("key", "right"), (22, 22)),
+    ("l2",       ("rrect", 444, 337, 702, 474, 34), (36, 20)),
+    ("r2",       ("rrect", 1149, 337, 1415, 474, 34), (36, 20)),
 ]
 
 
@@ -301,7 +272,7 @@ def make_buttons():
 
     with open(os.path.join(ASSETS, "buttons.h"), "w") as out:
         out.write("/* Gerado por tools/make_assets.py: retangulos do assets/buttons.png,\n"
-                  "   na ordem do GfxButton (largura 0 = desenhado pelo codigo). */\n")
+                  "   na ordem do UiButton (largura 0 = desenhado pelo codigo). */\n")
         out.write("static const unsigned short button_rects[%d][4] = {\n" % len(rects))
         for name, rx, ry, rw, rh in rects:
             out.write("    { %3d, %2d, %2d, %2d },   /* %s */\n" % (rx, ry, rw, rh, name))
@@ -314,7 +285,6 @@ def make_buttons():
 
     print("botoes: atlas %dx%d" % (width, height))
 
-
 def main():
     os.makedirs(ASSETS, exist_ok=True)
 
@@ -322,9 +292,9 @@ def main():
         make_buttons()
         return 0
 
-    make_background()
-    make_font()
-    make_sans()
+    for name, size in FONTS:
+        make_font(name, size)
+
     make_logo()
     make_buttons()
     return 0

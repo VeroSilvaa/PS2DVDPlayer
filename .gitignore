@@ -1,4 +1,4 @@
-﻿# Saidas de build
+# Saidas de build
 build/
 *.o
 *.elf
@@ -16,3 +16,6 @@ interface-model.png
 *Zone.Identifier
 Thumbs.db
 desktop.ini
+
+# Previas geradas por tools/make_assets.py (nao vao para o ELF)
+assets/preview_*.png

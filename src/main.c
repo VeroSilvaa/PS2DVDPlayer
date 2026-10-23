@@ -519,10 +519,23 @@ static void ui_screen_begin(GSGLOBAL *gsGlobal, const char *subtitle)
 
     ui_vgradient(0, 0, 640, 480, ui_rgba(0x0C, 0x1C, 0x40, 0x80), ui_rgba(0x02, 0x05, 0x10, 0x80));
 
-    /* cabeçalho */
-    ui_text_scaled(40, 22, 2.0f, "PS2DVDPlayer", UI_ACCENT);
-    ui_text(42, 64, subtitle, UI_DIM);
-    ui_rect(24, 92, 592, 2, UI_EDGE);
+    /* cabeçalho (modelo): disco, logo e o subtítulo da tela */
+    ui_icon(UI_ICON_DISC, 32, 22, 60);
+    ui_logo(100, 16);
+    ui_text(108, 66, subtitle, UI_DIM);
+    ui_rect(24, 102, 592, 2, UI_EDGE);
+}
+
+
+/*
+ * Rodapé comum: linha divisória; os pares botão + rótulo começam em
+ * x = 32 (cada chamada devolve o x do próximo).
+ */
+#define UI_FOOTER_Y 438
+
+static void ui_footer_line(void)
+{
+    ui_rect(24, 426, 592, 2, UI_EDGE);
 }
 
 
@@ -532,6 +545,7 @@ static void draw_main(
 )
 {
     /* ordem do modelo (tela 1) */
+    static const UiIcon icons[3] = { UI_ICON_NETWORK, UI_ICON_USB, UI_ICON_HDD };
     static const char *titles[3] = { "SMB", "USB", "HDD" };
     static const char *subtitles[3] = {
         "Filmes pela rede local",
@@ -546,41 +560,44 @@ static void draw_main(
     ui_screen_begin(gsGlobal, "DVD ISO PLAYER - PLAYSTATION 2");
 
     /* fontes de filmes */
-    ui_rect(120, 116, 400, 3 * 64 + 16, UI_PANEL);
-    ui_border(120, 116, 400, 3 * 64 + 16, 2, UI_EDGE);
+    ui_rect(100, 122, 440, 3 * 72 + 16, UI_PANEL);
+    ui_border(100, 122, 440, 3 * 72 + 16, 2, UI_EDGE);
 
     for (i = 0; i < 3; i++)
     {
-        float y = 124 + i * 64;
+        float y = 130 + i * 72;
 
         if (i == main_selected)
         {
-            ui_vgradient(130, y, 380, 56, ui_rgba(0x2A, 0x66, 0xC8, 0x80), ui_rgba(0x16, 0x3C, 0x86, 0x80));
-            ui_border(130, y, 380, 56, 2, ui_rgba(0x7C, 0xB8, 0xFF, 0x80));
+            ui_vgradient(110, y, 420, 64, ui_rgba(0x2A, 0x66, 0xC8, 0x80), ui_rgba(0x16, 0x3C, 0x86, 0x80));
+            ui_border(110, y, 420, 64, 2, ui_rgba(0x7C, 0xB8, 0xFF, 0x80));
         }
 
-        ui_text_scaled(150, y + 6, 1.3f, titles[i], UI_TEXT);
-        ui_text(150, y + 32, subtitles[i], i == main_selected ? UI_TEXT : UI_DIM);
+        ui_icon(icons[i], 128, y + 12, 40);
+        ui_text_f(UI_FONT_LARGE, 188, y + 2, titles[i], UI_TEXT);
+        ui_text(190, y + 34, subtitles[i], i == main_selected ? UI_TEXT : UI_DIM);
     }
 
     /* USB/HDD: procurando ou erro */
     if (main_msg[0])
-        ui_text_center(320, 336, main_msg, main_msg_error ? UI_ERROR : UI_TEXT);
+        ui_text_center(320, 368, main_msg, main_msg_error ? UI_ERROR : UI_TEXT);
 
     /* rodapé: botões à esquerda, rede à direita */
-    ui_rect(24, 430, 592, 2, UI_EDGE);
-    ui_button_hint(32, 442, UI_BTN_CROSS, "Selecionar");
+    ui_footer_line();
+    ui_button_hint(32, UI_FOOTER_Y, UI_BTN_CROSS, "Selecionar");
 
     net = network_get_info();
 
     if (net && net->initialized)
     {
-        ui_rect(468, 448, 8, 8, net->link_up ? UI_OK : UI_ERROR);
-        ui_text_right(608, 442, net->link_up ? "Rede: Conectada" : "Rede: Desconectada",
-                      net->link_up ? UI_OK : UI_ERROR);
+        const char *status = net->link_up ? "Rede: Conectada" : "Rede: Desconectada";
+        u64 color = net->link_up ? UI_OK : UI_ERROR;
+
+        ui_rect(600 - ui_text_width(status) - 16, UI_FOOTER_Y + 10, 9, 9, color);
+        ui_text_right(608, UI_FOOTER_Y, status, color);
     }
     else
-        ui_text_right(608, 442, "Rede: não iniciada", UI_ERROR);
+        ui_text_right(608, UI_FOOTER_Y, "Rede: não iniciada", UI_ERROR);
 }
 
 

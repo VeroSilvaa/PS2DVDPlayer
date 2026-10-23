@@ -21,7 +21,9 @@ EE_OBJS = \
 	build/bdm.o \
 	build/ui.o \
 	build/pngload.o \
-	build/font_sans_png.o \
+	build/font_body_png.o \
+	build/font_large_png.o \
+	build/logo_png.o \
 	build/buttons_png.o \
 	build/DEV9_irx.o \
 	build/NETMAN_irx.o \
@@ -229,7 +231,7 @@ build/bdm.o: src/bdm.c
 
 # Interface gráfica (base do PS2FileManager): fonte e botões de assets/
 # (tools/make_assets.py), embutidos como PNG e decodificados com a libpng.
-build/ui.o: src/ui.c assets/font_sans_14.h assets/buttons.h
+build/ui.o: src/ui.c assets/font_body.h assets/font_large.h assets/buttons.h
 	@mkdir -p $(@D)
 	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -Iassets \
 		-I$(GSKIT)/include \
@@ -241,15 +243,31 @@ build/pngload.o: src/pngload.c
 	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) \
 		-c $< -o $@
 
-build/font_sans_png.c: assets/font_sans_14.png
+build/font_body_png.c: assets/font_body.png
 	@mkdir -p $(@D)
-	bin2c $< $@ font_sans_png
+	bin2c $< $@ font_body_png
+
+build/font_large_png.c: assets/font_large.png
+	@mkdir -p $(@D)
+	bin2c $< $@ font_large_png
+
+build/logo_png.c: assets/logo.png
+	@mkdir -p $(@D)
+	bin2c $< $@ logo_png
 
 build/buttons_png.c: assets/buttons.png
 	@mkdir -p $(@D)
 	bin2c $< $@ buttons_png
 
-build/font_sans_png.o: build/font_sans_png.c
+build/font_body_png.o: build/font_body_png.c
+	@mkdir -p $(@D)
+	$(EE_CC) $(EE_CFLAGS) -c $< -o $@
+
+build/font_large_png.o: build/font_large_png.c
+	@mkdir -p $(@D)
+	$(EE_CC) $(EE_CFLAGS) -c $< -o $@
+
+build/logo_png.o: build/logo_png.c
 	@mkdir -p $(@D)
 	$(EE_CC) $(EE_CFLAGS) -c $< -o $@
 
@@ -414,7 +432,9 @@ clean:
 		build/USBMASS_BD_irx.c \
 		build/ATA_BD_irx.c \
 		build/SMBMAN_irx.c \
-		build/font_sans_png.c \
+		build/font_body_png.c \
+		build/font_large_png.c \
+		build/logo_png.c \
 		build/buttons_png.c
 
 

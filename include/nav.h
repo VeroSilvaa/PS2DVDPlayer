@@ -75,6 +75,25 @@ int nav_button_move(int dir);
 int nav_button_activate(void);
 
 /*
+ * Capítulos do título atual (fora do título, ex.: menu, retorna 0).
+ * nav_chapter_info: capítulo atual (1..parts) e total.
+ * nav_chapter_step: +1 próximo, -1 anterior (no primeiro, recomeça
+ * ele); retorna 1 se pulou (depois: frame_nav_flush).
+ */
+int nav_chapter_info(int *part, int *parts);
+int nav_chapter_step(int delta);
+
+/* Vai ao menu do disco; 1 se a VM aceitou (depois: frame_nav_flush). */
+int nav_menu(void);
+
+/*
+ * Tempo da imagem na tela (pts = PTS do quadro exibido, na linha
+ * contínua): posição e duração do título em ms, capítulo e total.
+ * Retorna 0 fora do título ou antes do primeiro nav packet.
+ */
+int nav_play_time(s64 pts, u32 *ms, u32 *total_ms, int *part, int *parts);
+
+/*
  * Paleta de 16 cores do subpicture (0x00YYCrCb), atualizada pelo
  * disco; nav_clut_serial() muda a cada troca.
  */

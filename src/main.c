@@ -210,6 +210,19 @@ static u64 fps_t0 = 0;
 static int fps_frames = 0;
 static int fps_x10 = 0;             /* quadros/s x10, último segundo */
 static int play_stats_due = 0;      /* imprimir quando a leitura parar */
+static char play_osd[48];           /* aviso na tela (ex.: capítulo) */
+static u64 play_osd_until = 0;
+
+/*
+ * Barra de controle do player (SELECT mostra/esconde).
+ */
+enum { BAR_PREV = 0, BAR_PLAY, BAR_NEXT, BAR_MENU, BAR_STOP, BAR_COUNT };
+
+#define PLAY_BAR_SECONDS 5          /* some sozinha sem uso (tocando) */
+
+static int play_bar = 0;
+static int play_bar_sel = BAR_PLAY;
+static u64 play_bar_until = 0;
 static u16 *frame_pixels = NULL;
 static int frame_upload = 0;
 static GSTEXTURE frame_tex;
@@ -3432,6 +3445,142 @@ static void csc_draw(GSGLOBAL *gsGlobal)
 }
 
 
+static void format_hms(char *out, int size, u32 ms)
+{
+    u32 s = ms / 1000;
+
+    snprintf(out, size, "%02u:%02u:%02u", s / 3600, (s / 60) % 60, s % 60);
+}
+
+
+/*
+ * Ícone de um botão da barra, centrado em (cx, cy).
+ */
+static void draw_bar_icon(GSGLOBAL *gsGlobal, int id, float cx, float cy, u64 c)
+{
+    switch (id)
+    {
+        case BAR_PREV:
+            gsKit_prim_sprite(gsGlobal, cx - 9, cy - 7, cx - 6, cy + 7, 4, c);
+            gsKit_prim_triangle(gsGlobal, cx + 8, cy - 7, cx + 8, cy + 7, cx - 5, cy, 4, c);
+            break;
+
+        case BAR_PLAY:
+            /* gsKit_prim_triangle é macro com ";": chaves obrigatórias */
+            if (frame_state == 6)
+            {
+                gsKit_prim_triangle(gsGlobal, cx - 6, cy - 8, cx - 6, cy + 8, cx + 8, cy, 4, c);
+            }
+            else
+            {
+                gsKit_prim_sprite(gsGlobal, cx - 7, cy - 7, cx - 2, cy + 7, 4, c);
+                gsKit_prim_sprite(gsGlobal, cx + 2, cy - 7, cx + 7, cy + 7, 4, c);
+            }
+            break;
+
+        case BAR_NEXT:
+            gsKit_prim_triangle(gsGlobal, cx - 8, cy - 7, cx - 8, cy + 7, cx + 5, cy, 4, c);
+            gsKit_prim_sprite(gsGlobal, cx + 6, cy - 7, cx + 9, cy + 7, 4, c);
+            break;
+
+        case BAR_MENU:
+            gsKit_prim_sprite(gsGlobal, cx - 8, cy - 7, cx + 8, cy - 4, 4, c);
+            gsKit_prim_sprite(gsGlobal, cx - 8, cy - 1, cx + 8, cy + 2, 4, c);
+            gsKit_prim_sprite(gsGlobal, cx - 8, cy + 5, cx + 8, cy + 8, 4, c);
+            break;
+
+        default:
+            gsKit_prim_sprite(gsGlobal, cx - 7, cy - 7, cx + 7, cy + 7, 4, c);
+            break;
+    }
+}
+
+
+/*
+ * Barra do player (tela 10 do modelo): título, capítulo e tempo em
+ * cima; progresso e botões embaixo.
+ */
+static void draw_play_bar(GSGLOBAL *gsGlobal, GSFONTM *font)
+{
+    /* nome do botão + atalho equivalente */
+    static const char *names[BAR_COUNT] = {
+        "Previous  (L1)", "Play  (START)", "Next  (R1)", "Menu  (TRIANGLE)", "Stop  (CIRCLE)"
+    };
+    char line[96];
+    char name[48];
+    char t_now[16], t_total[16];
+    u32 ms = 0, total = 0;
+    int part = 0, parts = 0;
+    int timed = frame_info.nav &&
+                nav_play_time(frame_info.pts, &ms, &total, &part, &parts);
+    u64 panel = GS_SETREG_RGBAQ(0x08, 0x0C, 0x18, 0x60, 0x00);
+    float x;
+    int i;
+    char *dot;
+
+    if (timed && total > 0 && ms > total)
+        ms = total;
+
+    gsGlobal->PrimAlphaEnable = GS_SETTING_ON;
+    gsKit_set_primalpha(gsGlobal, GS_SETREG_ALPHA(0, 1, 0, 1, 0), 0);
+
+    gsKit_prim_sprite(gsGlobal, 0.0f, 0.0f, 640.0f, 34.0f, 3, panel);
+    gsKit_prim_sprite(gsGlobal, 0.0f, 384.0f, 640.0f, 480.0f, 3, panel);
+
+    gsGlobal->PrimAlphaEnable = GS_SETTING_OFF;
+
+    /* nome da ISO sem a extensão (cortado para caber antes do tempo) */
+    snprintf(name, sizeof(name), "%.38s", iso_info_name);
+    dot = strrchr(name, '.');
+    if (dot)
+        *dot = '\0';
+
+    gsKit_fontm_print_scaled(gsGlobal, font, 16.0f, 9.0f, 4, 0.38f, COLOR_WHITE, name);
+
+    if (timed)
+    {
+        format_hms(t_now, sizeof(t_now), ms);
+        format_hms(t_total, sizeof(t_total), total);
+
+        snprintf(line, sizeof(line), "Chapter %02d/%02d   %s / %s", part, parts, t_now, t_total);
+        gsKit_fontm_print_scaled(gsGlobal, font, 330.0f, 9.0f, 4, 0.38f, COLOR_WHITE, line);
+    }
+
+    /* progresso */
+    gsKit_prim_sprite(gsGlobal, 20.0f, 396.0f, 620.0f, 402.0f, 4, COLOR_DISABLED);
+
+    if (timed && total > 0)
+    {
+        float fx = 20.0f + 600.0f * (float)ms / (float)total;
+
+        gsKit_prim_sprite(gsGlobal, 20.0f, 396.0f, fx, 402.0f, 4, COLOR_SELECTED);
+        gsKit_prim_sprite(gsGlobal, fx - 4.0f, 392.0f, fx + 4.0f, 406.0f, 4, COLOR_WHITE);
+
+        gsKit_fontm_print_scaled(gsGlobal, font, 20.0f, 410.0f, 4, 0.34f, COLOR_WHITE, t_now);
+        gsKit_fontm_print_scaled(gsGlobal, font, 548.0f, 410.0f, 4, 0.34f, COLOR_WHITE, t_total);
+    }
+
+    /* botões */
+    for (i = 0, x = 20.0f; i < BAR_COUNT; i++, x += 58.0f)
+    {
+        int sel = i == play_bar_sel;
+
+        gsKit_prim_sprite(gsGlobal, x, 432.0f, x + 50.0f, 464.0f, 4,
+                          sel ? COLOR_SELECTED : COLOR_PANEL);
+
+        draw_bar_icon(gsGlobal, i, x + 25.0f, 448.0f, sel ? COLOR_WHITE : COLOR_DISABLED);
+    }
+
+    snprintf(line, sizeof(line), "%s", names[play_bar_sel]);
+    if (play_bar_sel == BAR_PLAY && frame_state != 6)
+        snprintf(line, sizeof(line), "Pause  (START)");
+
+    gsKit_fontm_print_scaled(gsGlobal, font, 320.0f, 434.0f, 4, 0.40f, COLOR_WHITE, line);
+    gsKit_fontm_print_scaled(gsGlobal, font, 320.0f, 452.0f, 4, 0.32f, COLOR_DISABLED,
+                             "LEFT/RIGHT=Choose  CROSS=OK  SELECT=Hide");
+}
+
+
 static void draw_frame(
     GSGLOBAL *gsGlobal,
     GSFONTM *font
@@ -3558,7 +3707,7 @@ static void draw_frame(
     /*
      * Barra de status: tempo, quadros/s, buffer, atrasos.
      */
-    if (frame_info.frame_us > 0)
+    if (frame_info.frame_us > 0 && !play_bar)
     {
         u32 secs = (u32)(((u64)frame_info.frames * frame_info.frame_us) / 1000000ULL);
 
@@ -3582,7 +3731,7 @@ static void draw_frame(
     /*
      * Navegação: still e menu (os botões ainda não respondem).
      */
-    if (frame_info.nav && frame_state == 2)
+    if (frame_info.nav && frame_state == 2 && !play_bar)
     {
         line[0] = '\0';
 
@@ -3624,13 +3773,27 @@ static void draw_frame(
             gsKit_fontm_print_scaled(gsGlobal, font, 230.0f, 220.0f, 3, 0.50f, COLOR_WHITE, "END OF VIDEO");
     }
 
-    gsKit_fontm_print_scaled(
-        gsGlobal, font, 20.0f, 455.0f, 3, 0.36f, COLOR_WHITE,
-        frame_state == 6 ? "START=Play  CIRCLE=Stop" :
-        (frame_info.nav && frame_info.buttons > 0) ?
-            "D-PAD=Move  CROSS=Select  START=Pause  CIRCLE=Stop" :
-            "START=Pause  CIRCLE=Stop"
-    );
+    if (play_osd_until && GetTimerSystemTime() < play_osd_until)
+        gsKit_fontm_print_scaled(gsGlobal, font, 470.0f, 40.0f, 4, 0.45f, COLOR_WHITE, play_osd);
+
+    if (play_bar)
+    {
+        draw_play_bar(gsGlobal, font);
+        return;
+    }
+
+    {
+        int part, parts;
+
+        gsKit_fontm_print_scaled(
+            gsGlobal, font, 20.0f, 455.0f, 3, 0.36f, COLOR_WHITE,
+            (frame_info.nav && frame_info.buttons > 0) ?
+                "D-PAD=Move  CROSS=Select  SELECT=Controls  CIRCLE=Stop" :
+            (frame_info.nav && nav_chapter_info(&part, &parts)) ?
+                "L1/R1=Chapter  START=Play/Pause  TRIANGLE=Menu  SELECT=Controls" :
+                "START=Play/Pause  SELECT=Controls  CIRCLE=Stop"
+        );
+    }
 }
 
 
@@ -3669,7 +3832,7 @@ static void play_stats(void)
         );
 
         printf(
-            "AUDIO: output=%d played %u, dropped late %u jump %u full %u, queued %d, "
+            "AUDIO: output=%d played %u, dropped late %u jump %u full %u overlap %u, queued %d, "
             "silence %u KB, rpc %u, last a-v %d ms, video pts %d ms\n"
             "AUDIO: sync (sound - picture): now %d ms, min %d, avg %d, max %d ms (%u samples)\n",
             as->output,
@@ -3677,6 +3840,7 @@ static void play_stats(void)
             (unsigned)as->dropped_late,
             (unsigned)as->dropped_jump,
             (unsigned)as->dropped_full,
+            (unsigned)as->dropped_overlap,
             as->queued,
             (unsigned)(as->silence / 1024),
             (unsigned)as->rpc,
@@ -3692,10 +3856,160 @@ static void play_stats(void)
 }
 
 
+static void play_stop(void)
+{
+    /*
+     * frame_close conclui a leitura em curso: depois disso o
+     * printf é seguro.
+     */
+    frame_close();
+
+    if (frame_state != 0 && frame_state != 1)
+        play_stats();
+
+    mem_log("video close");
+
+    play_bar = 0;
+    frame_state = 0;
+    current_screen = SCREEN_ISO_INFO;
+}
+
+
+/* Pula de capítulo (+1/-1) e mostra o aviso. 1 se pulou. */
+static int play_chapter(int delta, u64 now)
+{
+    int part, parts;
+    int jumped = nav_chapter_step(delta);
+
+    if (jumped)
+    {
+        frame_nav_flush(&frame_info);
+        frame_state = 5;
+    }
+
+    if (nav_chapter_info(&part, &parts))
+    {
+        snprintf(play_osd, sizeof(play_osd), "CHAPTER %d/%d", part, parts);
+        play_osd_until = now + (u64)kBUSCLK * 2;
+    }
+
+    return jumped;
+}
+
+
+/*
+ * Ações do player: as mesmas pela barra (X) e pelos atalhos
+ * (L1 anterior, START play/pausa, R1 próximo, TRIÂNGULO menu,
+ * CÍRCULO parar). Com a barra aberta, o atalho destaca o botão dele.
+ */
+static void play_action(int id, u64 now)
+{
+    if (play_bar)
+    {
+        play_bar_sel = id;
+        play_bar_until = now + (u64)kBUSCLK * PLAY_BAR_SECONDS;
+    }
+
+    switch (id)
+    {
+        case BAR_PREV:
+        case BAR_NEXT:
+            if (frame_info.nav)
+                play_chapter(id == BAR_NEXT ? 1 : -1, now);
+            break;
+
+        case BAR_PLAY:
+            if (frame_state == 6)
+            {
+                frame_state = 2;
+                play_next_due = now;
+            }
+            else if (frame_state == 2)
+                frame_state = 6;
+            break;
+
+        case BAR_MENU:
+            if (frame_info.nav && nav_menu())
+            {
+                frame_nav_flush(&frame_info);
+                frame_state = 5;
+                play_bar = 0;   /* D-pad livre para os botões do disco */
+            }
+            break;
+
+        case BAR_STOP:
+            play_stop();
+            break;
+    }
+}
+
+
+/*
+ * Atalhos do player. Retorna 1 se algum foi usado.
+ */
+static int play_shortcuts(u64 now)
+{
+    if (input_pressed(PAD_CIRCLE))
+        play_action(BAR_STOP, now);
+    else if (input_pressed(PAD_START))
+        play_action(BAR_PLAY, now);
+    else if (input_pressed(PAD_R1))
+        play_action(BAR_NEXT, now);
+    else if (input_pressed(PAD_L1))
+        play_action(BAR_PREV, now);
+    else if (input_pressed(PAD_TRIANGLE))
+        play_action(BAR_MENU, now);
+    else
+        return 0;
+
+    return 1;
+}
+
+
+/*
+ * Barra de controle (SELECT): esquerda/direita escolhe, X ativa.
+ * Retorna 1 se a entrada foi usada pela barra.
+ */
+static int play_bar_input(u64 now)
+{
+    if (input_pressed(PAD_SELECT))
+    {
+        play_bar = !play_bar;
+        play_bar_sel = BAR_PLAY;
+        play_bar_until = now + (u64)kBUSCLK * PLAY_BAR_SECONDS;
+        return 1;
+    }
+
+    if (!play_bar)
+        return 0;
+
+    /* some sozinha durante a reprodução; pausado fica na tela */
+    if (frame_state == 2 && now > play_bar_until)
+    {
+        play_bar = 0;
+        return 0;
+    }
+
+    if (input_pressed(PAD_LEFT) || input_pressed(PAD_RIGHT))
+    {
+        play_bar_sel = (play_bar_sel + (input_pressed(PAD_RIGHT) ? 1 : BAR_COUNT - 1)) % BAR_COUNT;
+        play_bar_until = now + (u64)kBUSCLK * PLAY_BAR_SECONDS;
+        return 1;
+    }
+
+    if (!input_pressed(PAD_CROSS))
+        return 0;
+
+    play_action(play_bar_sel, now);
+    return 1;
+}
+
+
 static void update_frame(void)
 {
     u64 now;
     int result;
+    int bar_used;
 
     /*
      * Abre o vídeo um frame depois do pedido, para "OPENING"
@@ -3748,24 +4062,14 @@ static void update_frame(void)
 
     if (input_pressed(PAD_CIRCLE))
     {
-        /*
-         * frame_close conclui a leitura em curso: depois disso o
-         * printf é seguro.
-         */
-        frame_close();
-
-        if (frame_state != 0 && frame_state != 1)
-            play_stats();
-
-        mem_log("video close");
-
-        frame_state = 0;
-        current_screen = SCREEN_ISO_INFO;
+        play_stop();
         return;
     }
 
     if (frame_state < 0 || frame_state == 4)
     {
+        play_bar = 0;
+
         if (play_stats_due && frame_read_idle())
         {
             play_stats();
@@ -3797,16 +4101,25 @@ static void update_frame(void)
         fps_t0 = now;
     }
 
-    if (frame_state == 6)
-    {
-        if (input_pressed(PAD_START))
-        {
-            frame_state = 2;
-            play_next_due = now;
-        }
+    /*
+     * Barra e atalhos fazem as mesmas ações (play_action), tocando ou
+     * pausado; quando a barra usa a entrada, o resto não a vê.
+     */
+    bar_used = 0;
 
-        return;
+    if (frame_state == 2 || frame_state == 6)
+    {
+        bar_used = play_bar_input(now);
+
+        if (!bar_used)
+            bar_used = play_shortcuts(now);
+
+        if (frame_state == 0)
+            return;     /* parou */
     }
+
+    if (frame_state == 6)
+        return;
 
     if (frame_state == 5)
     {
@@ -3820,16 +4133,9 @@ static void update_frame(void)
     }
 
     /*
-     * Tocando. START pausa; no menu do DVD o D-pad escolhe o botão e
-     * o X ativa.
+     * Tocando. No menu do DVD o D-pad escolhe o botão e o X ativa.
      */
-    if (input_pressed(PAD_START))
-    {
-        frame_state = 6;
-        return;
-    }
-
-    if (frame_info.nav && frame_info.buttons > 0)
+    if (!bar_used && frame_info.nav && frame_info.buttons > 0)
     {
         if (input_pressed(PAD_UP))
             nav_button_move(NAV_UP);
@@ -3846,6 +4152,7 @@ static void update_frame(void)
             return;
         }
     }
+
 
     /*
      * Still frame do DVD: a imagem fica parada; frame_pump conta o

@@ -185,6 +185,27 @@ static void decode_frame(void)
     PcmFrame *f;
     s16 *pcm;
 
+    /*
+     * Troca de PGC: o fim do áudio do clipe anterior pode passar do
+     * fim do vídeo dele e se sobrepor ao começo do seguinte (o tempo
+     * volta). Os quadros do fim da fila que ficaram à frente deste
+     * são descartados; senão o som do clipe novo sai atrasado pelo
+     * tamanho da sobra (medido: ~450 ms, para sempre).
+     */
+    if (frame_pts >= 0)
+    {
+        while (q_count > (head_sent > 0 ? 1 : 0))
+        {
+            PcmFrame *tail = &pcm_q[(q_head + q_count - 1) % PCM_QUEUE];
+
+            if (tail->pts < frame_pts)
+                break;
+
+            q_count--;
+            stats.dropped_overlap++;
+        }
+    }
+
     if (q_count == PCM_QUEUE)
     {
         /* fila cheia: descarta o mais antigo */

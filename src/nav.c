@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <stdarg.h>
 #include <string.h>
 #include <fcntl.h>
@@ -66,6 +67,26 @@ static int audio_stream = 0;
  */
 static s64 pts_offset = 0;
 static s64 last_e_ptm = -1;
+
+/*
+ * Tempo no título: a libdvdnav informa a posição da leitura, ~4 s à
+ * frente da tela. Cada nav packet do título guarda o par (PTS na linha
+ * contínua, tempo no título); nav_play_time() converte o PTS da imagem
+ * na tela.
+ */
+#define TIME_QUEUE 64
+
+static struct { s64 pts; u32 ms; int part; } time_q[TIME_QUEUE];
+static int time_head = 0;
+static int time_count = 0;
+
+static int time_part = 0;           /* capítulo do último nav packet */
+static s64 time_part_base = 0;      /* tempo na PGC no início dele */
+
+static uint64_t *chap_times = NULL; /* fim de cada capítulo (90 kHz) */
+static int chap_count = 0;
+static int chap_title = 0;
+static u64 chap_total = 0;
 
 
 static u64 cache_end(void)
@@ -468,6 +489,208 @@ static int cur_domain(void)
 }
 
 
+/* ============================================================
+ * CAPÍTULOS (PTT do título)
+ * ============================================================ */
+
+int nav_chapter_info(int *part, int *parts)
+{
+    int32_t t = 0, p = 0, n = 0;
+
+    if (!nav || cur_domain() != DVD_DOMAIN_VTSTitle)
+        return 0;
+
+    if (dvdnav_current_title_info(nav, &t, &p) != DVDNAV_STATUS_OK || t < 1 || p < 1)
+        return 0;
+
+    if (dvdnav_get_number_of_parts(nav, t, &n) != DVDNAV_STATUS_OK || n < 1)
+        return 0;
+
+    *part = (int)p;
+    *parts = (int)n;
+    return 1;
+}
+
+
+static void chapters_free(void)
+{
+    if (chap_times)
+        free(chap_times);
+
+    chap_times = NULL;
+    chap_count = 0;
+    chap_title = 0;
+    chap_total = 0;
+}
+
+
+static void time_reset(void)
+{
+    time_head = 0;
+    time_count = 0;
+    time_part = 0;
+    time_part_base = 0;
+}
+
+
+/*
+ * Chamado a cada nav packet: guarda (pts, tempo no título).
+ */
+static void time_record(s64 pts)
+{
+    int32_t t = 0, p = 0;
+    s64 pgc_time;
+    u64 start;
+    int i;
+
+    if (cur_domain() != DVD_DOMAIN_VTSTitle)
+    {
+        time_reset();
+        return;
+    }
+
+    if (dvdnav_current_title_info(nav, &t, &p) != DVDNAV_STATUS_OK || t < 1 || p < 1)
+        return;
+
+    if (t != chap_title)
+    {
+        uint64_t *times = NULL;
+        uint64_t total = 0;
+        int n;
+
+        chapters_free();
+
+        /* abre o IFO do título: fileXio livre antes */
+        nav_wait_io();
+        n = (int)dvdnav_describe_title_chapters(nav, t, &times, &total);
+
+        chap_times = times;
+        chap_count = n;
+        chap_title = t;
+        chap_total = total;
+
+        frame_logf("NAV: title %d: %d chapters, %llu s\n",
+                   (int)t, n, (unsigned long long)(total / 90000));
+    }
+
+    pgc_time = dvdnav_get_current_time(nav);
+
+    if (p != time_part || pgc_time < time_part_base)
+    {
+        time_part = p;
+        time_part_base = pgc_time;
+    }
+
+    start = (p > 1 && p - 2 < chap_count) ? chap_times[p - 2] : 0;
+
+    i = (time_head + time_count) % TIME_QUEUE;
+
+    if (time_count == TIME_QUEUE)
+        time_head = (time_head + 1) % TIME_QUEUE;
+    else
+        time_count++;
+
+    time_q[i].pts = pts;
+    time_q[i].ms = (u32)((start + (u64)(pgc_time - time_part_base)) / 90);
+    time_q[i].part = p;
+}
+
+
+int nav_play_time(s64 pts, u32 *ms, u32 *total_ms, int *part, int *parts)
+{
+    int k;
+
+    if (!nav || pts < 0 || time_count == 0)
+        return 0;
+
+    /* o registro mais novo que já chegou à tela */
+    for (k = time_count - 1; k >= 0; k--)
+    {
+        int i = (time_head + k) % TIME_QUEUE;
+
+        if (time_q[i].pts <= pts)
+        {
+            *ms = time_q[i].ms + (u32)((pts - time_q[i].pts) / 90);
+            *total_ms = (u32)(chap_total / 90);
+            *part = time_q[i].part;
+            *parts = chap_count;
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+
+/*
+ * Menu do disco: o menu raiz do título; sem ele, o menu de títulos.
+ */
+int nav_menu(void)
+{
+    dvdnav_status_t st;
+
+    if (!nav)
+        return 0;
+
+    /* a VM pode abrir outro IFO: fileXio livre antes */
+    nav_wait_io();
+
+    st = dvdnav_menu_call(nav, DVD_MENU_Root);
+
+    if (st != DVDNAV_STATUS_OK)
+    {
+        frame_logf("NAV: root menu: %s\n", dvdnav_err_to_string(nav));
+        st = dvdnav_menu_call(nav, DVD_MENU_Title);
+    }
+
+    frame_logf("NAV: menu call (%s)\n",
+               st == DVDNAV_STATUS_OK ? "ok" : dvdnav_err_to_string(nav));
+
+    last_buttons = -1;
+    return st == DVDNAV_STATUS_OK;
+}
+
+
+/*
+ * Pelo número do capítulo (e não next/prev_pg_search): num disco com
+ * um clipe por PGC, o next_pg do último programa executa os comandos
+ * de fim da PGC, que podem levar ao menu.
+ */
+int nav_chapter_step(int delta)
+{
+    int32_t t = 0, p = 0;
+    int part, parts, target;
+    dvdnav_status_t st;
+
+    if (!nav_chapter_info(&part, &parts))
+        return 0;
+
+    target = part + delta;
+
+    if (target < 1)
+        target = 1;
+
+    if (target > parts)
+    {
+        frame_logf("NAV: chapter %d/%d: already last\n", part, parts);
+        return 0;
+    }
+
+    dvdnav_current_title_info(nav, &t, &p);
+
+    /* a VM pode abrir outro IFO: fileXio livre antes */
+    nav_wait_io();
+
+    st = dvdnav_part_play(nav, t, target);
+
+    frame_logf("NAV: chapter %d -> %d/%d (%s)\n", part, target, parts,
+               st == DVDNAV_STATUS_OK ? "ok" : dvdnav_err_to_string(nav));
+
+    last_buttons = -1;
+    return st == DVDNAV_STATUS_OK;
+}
+
+
 int nav_open(const char *path, u64 size, int prefetch)
 {
     static const dvdnav_logger_cb logcb = { nav_log };
@@ -483,6 +706,8 @@ int nav_open(const char *path, u64 size, int prefetch)
     audio_stream = 0;
     pts_offset = 0;
     last_e_ptm = -1;
+    chapters_free();
+    time_reset();
 
     fileXioSetBlockMode(FXIO_WAIT);
     fileXioSetRWBufferSize(NAV_CACHE);
@@ -524,6 +749,9 @@ void nav_close(void)
         dvdnav_close(nav);
         nav = NULL;
     }
+
+    chapters_free();
+    time_reset();
 
     if (ns.fd >= 0 && ns.size)
     {
@@ -628,6 +856,8 @@ int nav_next(u8 *buf, NavEvent *ev)
                 }
 
                 last_e_ptm = e;
+
+                time_record(s + pts_offset);
             }
 
             if (n != last_buttons)

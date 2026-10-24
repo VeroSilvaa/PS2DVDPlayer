@@ -14,7 +14,8 @@ MPEG-2 pelo IPU do PS2 e áudio AC3 pela liba52.
 
 - **Menus do DVD** (First Play, menus com botões e destaque do disco),
   capítulos e troca de clipe/título contínua.
-- **Vídeo MPEG-2** com conversão de cor no GS (~30 fps no PCSX2).
+- **Vídeo MPEG-2** com conversão de cor no GS (~30 fps em 480p/NTSC; em
+  PAL 576i, a 50 Hz, ~27 fps com descarte controlado de quadros).
 - **Áudio AC3** 2.0 e 5.1 (mixado para estéreo), sincronizado com o vídeo,
   com **troca de faixa imediata**.
 - **Três fontes de filmes:** SMB (rede local), USB e HDD em exFAT/FAT32,

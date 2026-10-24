@@ -109,7 +109,9 @@ EE_INCS += \
 
 .PHONY: all clean
 
+# O ELF sai sem as seções de depuração (-g do PS2SDK): de ~5,3 MB para ~1,3 MB.
 all: $(EE_BIN)
+	$(EE_STRIP) --strip-debug $(EE_BIN)
 
 
 # ============================================================

@@ -321,7 +321,8 @@ static u64 fps_t0 = 0;
 static int fps_frames = 0;
 static int fps_x10 = 0;             /* quadros/s x10, último segundo */
 static int play_stats_due = 0;      /* imprimir quando a leitura parar */
-static char play_osd[48];           /* aviso na tela (ex.: capítulo) */
+static int play_skip_no_flip = 0;   /* quadro pulado: sem desenho nem retrace */
+static int video_pal = 0;           /* saída PAL 50 Hz (MODO DE VÍDEO) */static char play_osd[48];           /* aviso na tela (ex.: capítulo) */
 static u64 play_osd_until = 0;
 
 /*
@@ -3352,6 +3353,13 @@ static void update_frame(void)
             if ((frame_info.frames % 300) == 0)
                 play_stats_due = 1;
 
+            /*
+             * Sem imagem nova: o laço não desenha nem espera o retrace,
+             * e o próximo quadro sai em seguida. Antes, cada quadro
+             * pulado esperava um retrace (20 ms no PAL) e o atraso só
+             * crescia (o vídeo caía para 0 fps).
+             */
+            play_skip_no_flip = 1;
             return;
         }
     }
@@ -3406,10 +3414,18 @@ static int frame_skip_render(void)
     if (current_screen != SCREEN_FRAME || frame_state != 2 || frame_upload)
         return 0;
 
+    /* acabou de pular um quadro atrasado: não espera o retrace */
+    if (play_skip_no_flip)
+    {
+        play_skip_no_flip = 0;
+        return 1;
+    }
+
     if (frame_still_hold(&frame_info))
         return 0;
 
-    return GetTimerSystemTime() + us_to_ticks(17000) < play_next_due;
+    /* um retrace: 20 ms no PAL (50 Hz), ~17 ms no NTSC/480p (60 Hz) */
+    return GetTimerSystemTime() + us_to_ticks(video_pal ? 20000 : 17000) < play_next_due;
 }
 
 
@@ -3784,7 +3800,6 @@ static void update_smb(void)
  *
  * A tela continua 640x480 em todos (mesma VRAM e mesmo layout).
  */
-static int video_pal = 0;
 
 static void video_mode_fix_pal(GSGLOBAL *gs);
 

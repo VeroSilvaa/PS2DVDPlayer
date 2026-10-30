@@ -18,6 +18,8 @@ MPEG-2 pelo IPU do PS2 e áudio AC3 pela liba52.
   PAL 576i, a 50 Hz, ~27 fps com descarte controlado de quadros).
 - **Áudio AC3** 2.0 e 5.1 (mixado para estéreo), sincronizado com o vídeo,
   com **troca de faixa imediata**.
+- **Legendas do DVD**, sincronizadas com o vídeo e em amarelo (cores próprias
+  do disco são mantidas): o L2 liga, troca de faixa e desliga.
 - **Três fontes de filmes:** SMB (rede local), USB e HDD em exFAT/FAT32,
   inclusive ISOs maiores que 4 GB.
 - **Capas dos filmes** (PNG) na tela de detalhes.
@@ -27,7 +29,6 @@ MPEG-2 pelo IPU do PS2 e áudio AC3 pela liba52.
 
 - **Só áudio AC3.** Faixas DTS, LPCM ou MPEG não tocam (não aparecem na troca
   de faixa).
-- **Legendas ainda não são exibidas** (o L2 mostra quantas existem).
 - **Sem suporte a CSS:** a ISO precisa estar **sem proteção** (como as geradas
   a partir de DVDs próprios com ferramentas de backup).
 - **HDD só em exFAT/FAT32 (MBR).** HDD em APA/PFS (formato do HDLoader/OPL
@@ -92,7 +93,7 @@ START confirma, ○ cancela.
 | START | pausar / continuar |
 | L1 / R1 | capítulo anterior / próximo |
 | R2 | próxima faixa de áudio |
-| L2 | informa as legendas do título |
+| L2 | próxima legenda / desligar |
 | △ | menu do disco |
 | ○ | parar |
 | SELECT | barra de controle (◀▶ escolhe, ✕ confirma) |

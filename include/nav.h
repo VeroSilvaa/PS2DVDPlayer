@@ -114,10 +114,14 @@ int nav_audio_info(char *label, int size);
 int nav_audio_cycle(char *label, int size);
 
 /*
- * Legendas do título atual: quantas faixas existem (0 fora do título).
- * label: "NO SUBTITLES" ou a contagem (exibição ainda não suportada).
+ * Legendas do título atual: passa para a próxima faixa ou desliga,
+ * depois da última. Retorna 0 se o título não tem legendas. label
+ * recebe a descrição da escolha.
  */
-int nav_spu_count(char *label, int size);
+int nav_spu_cycle(char *label, int size);
+
+/* Legenda comum ligada (forçadas e botões aparecem de qualquer modo). */
+int nav_spu_show(void);
 
 /*
  * Deslocamento (90 kHz) a somar aos PTS dos packs seguintes ao último

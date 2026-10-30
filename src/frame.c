@@ -104,6 +104,8 @@ static int picture_size = 0;
 static MPEGSequenceInfo *seq_info = NULL;
 static u16 *direct_dst = NULL;      /* destino do quadro atual */
 static s64 cur_pts;
+static s64 clock_pts = -1;          /* relógio do vídeo, ver video_clock */
+static u64 clock_t0 = 0;
 static int decoder_open = 0;
 
 static FrameInfo *cur_info = NULL;  /* para os callbacks */
@@ -137,8 +139,15 @@ static int btn_pending_set = 0;
  * PTS do vídeo: cada PES com PTS marca a posição do buffer onde o
  * seu payload começa; ao enviar essa posição ao IPU, cur_pts recebe
  * o PTS e a libmpeg o associa ao quadro decodificado.
+ *
+ * A fila precisa cobrir o buffer inteiro: se ela enche antes, o mais
+ * antigo sai sem ter sido lido, a leitura nunca alcança o novo mais
+ * antigo e cur_pts congela (som mudo). Há discos com um PTS por imagem
+ * (~15 KB de vídeo), não só um por GOP; no pior caso, um PES por pack.
  */
-#define VPTS_QUEUE 128
+#define VPTS_QUEUE (FRAME_RING_SIZE / 1024)
+
+#define FRAME_LEAD_MAX (6 * 90000)  /* 6 s em ticks de 90 kHz */
 
 static struct { u32 pos; s64 pts; } vpts_q[VPTS_QUEUE];
 static int vpts_head = 0;
@@ -356,6 +365,26 @@ static void vpts_apply(u32 pos)
 
 
 /*
+ * Vídeo no buffer além de FRAME_LEAD_MAX: parar de ler o disco. O áudio
+ * vem junto no mesmo pack, então chega adiantado na mesma medida; em
+ * disco de bitrate baixo os 4 MB chegam a ~13 s, mais que a fila de
+ * áudio (~8 s) e que SYNC_JUMP (10 s), e o som falha ou some. Abaixo de
+ * FRAME_READY_BYTES lê sempre, para o player não esperar por dados.
+ */
+static int video_lead_full(void)
+{
+    s64 newest;
+
+    if (vpts_count < 2 || ring_fill() < FRAME_READY_BYTES)
+        return 0;
+
+    newest = vpts_q[(vpts_head + vpts_count - 1) % VPTS_QUEUE].pts;
+
+    return newest - vpts_q[vpts_head].pts > FRAME_LEAD_MAX;
+}
+
+
+/*
  * Envia ao buffer o payload dos PES de vídeo (0xE0) de um pack.
  */
 static void demux_pack(const u8 *p)
@@ -413,7 +442,7 @@ static void demux_pack(const u8 *p)
                 p[payload] == 0x20 + nav_spu_stream())
             {
                 spu_feed(p + payload + 1, payload_len - 1,
-                         (p[hdr + 1] & 0x80) != 0, ring_wr);
+                         (p[hdr + 1] & 0x80) != 0, pes_pts_nav(p, hdr), ring_wr);
             }
             else if (payload_len > 1 && payload < ISO_SECTOR_SIZE &&
                      (p[payload] & 0xF8) == 0x80)
@@ -540,7 +569,8 @@ static void ring_seq_end(void)
  */
 static void nav_sync(FrameInfo *info)
 {
-    if (spu_update(ring_rd))
+    /* em menus e stills o relógio pode não andar: só a posição vale */
+    if (spu_update(ring_rd, info->still || info->buttons > 0 ? -1 : info->pts))
         info->spu_serial = spu_info()->serial;
 
     if (btn_pending_set && (s32)(ring_rd - btn_pending_pos) >= 0)
@@ -590,7 +620,8 @@ static void nav_pump(FrameInfo *info)
     }
 
     while (budget-- > 0 && !info->eof &&
-           ring_free() >= NAV_BLOCK_SIZE + FRAME_RING_GUARD && nav_ready())
+           ring_free() >= NAV_BLOCK_SIZE + FRAME_RING_GUARD &&
+           !video_lead_full() && nav_ready())
     {
         NavEvent ev;
         int r = nav_next(nav_block, &ev);
@@ -1042,6 +1073,7 @@ int frame_open_nav(
     vpts_head = 0;
     vpts_count = 0;
     cur_pts = -1;
+    clock_pts = -1;
     info->pts = -1;
 
     if (nav_open(path, iso_size, 1) < 0)
@@ -1102,6 +1134,7 @@ void frame_nav_flush(FrameInfo *info)
     vpts_head = 0;
     vpts_count = 0;
     cur_pts = -1;
+    clock_pts = -1;
     info->pts = -1;
 
     dma_channel_initialize(DMA_CHANNEL_toIPU, NULL, 0);
@@ -1123,6 +1156,44 @@ int frame_next_skip(
     MPEG_SetSkipCSC(0);
 
     return r;
+}
+
+
+/*
+ * O PTS de cada quadro é o do último PES do bloco enviado ao IPU: com
+ * quadros mínimos (cena parada) um bloco de 2 KB leva vários, e o PTS
+ * fica parado e depois salta (medido: -229 ms). Se o áudio seguisse esse
+ * valor, descartaria quadros ou inseriria silêncio estando na hora certa,
+ * o que se ouve como estalo. O relógio segue o tempo real e só se ajusta
+ * devagar ao PTS; acima de 0,5 s é salto de verdade e ele acompanha.
+ */
+#define CLOCK_RESYNC 45000      /* 0,5 s */
+#define CLOCK_GAIN   64
+
+static s64 video_clock(s64 pts)
+{
+    u64 now = GetTimerSystemTime();
+    s64 err;
+
+    if (pts < 0)
+        return pts;
+
+    if (clock_pts >= 0)
+    {
+        clock_pts += (s64)((now - clock_t0) * 90000ULL / kBUSCLK);
+        err = pts - clock_pts;
+
+        if (err > -CLOCK_RESYNC && err < CLOCK_RESYNC)
+            clock_pts += err / CLOCK_GAIN;
+        else
+            clock_pts = pts;
+    }
+    else
+        clock_pts = pts;
+
+    clock_t0 = now;
+
+    return clock_pts;
 }
 
 
@@ -1240,9 +1311,9 @@ int frame_next(
 
     if (nav_mode)
     {
-        info->pts = pts;
+        info->pts = video_clock(pts);
         nav_sync(info);
-        audio_pump(pts);
+        audio_pump(info->pts);
     }
 
     return 1;

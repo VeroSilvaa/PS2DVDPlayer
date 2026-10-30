@@ -9,18 +9,27 @@
  * Pacote SPU: até 64 KB (tamanho em 16 bits no início).
  */
 #define SPU_PKT_MAX   65536
-#define SPU_QUEUE     4
+/* cabe uma legenda por segundo nos ~6 s de vídeo do buffer (FRAME_LEAD_MAX) */
+#define SPU_QUEUE     8
+
+/* SP_DCSQ_STM: atraso em unidades de 1024 ticks de 90 kHz */
+#define SPU_DELAY_TICKS 1024
+
+/* PTS mais longe que isso (5 s) não é espera: é salto, exibe já */
+#define SPU_WAIT_MAX  450000
 
 typedef struct
 {
     u8 data[SPU_PKT_MAX];
     int size;
+    s64 pts;
     u32 pos;
 } SpuPacket;
 
 static u8 asm_buf[SPU_PKT_MAX];
 static int asm_len = 0;
 static int asm_active = 0;
+static s64 asm_pts = -1;
 
 static SpuPacket queue[SPU_QUEUE];
 static int q_head = 0;
@@ -47,6 +56,7 @@ void spu_reset(void)
 
     memset(&info, 0, sizeof(info));
     info.serial = serial + 1;
+    info.stop_pts = -1;
 }
 
 
@@ -66,7 +76,7 @@ const u8 *spu_bitmap(void)
  * REMONTAGEM
  * ============================================================ */
 
-static void enqueue(const u8 *data, int size, u32 pos)
+static void enqueue(const u8 *data, int size, s64 pts, u32 pos)
 {
     SpuPacket *pk;
 
@@ -80,12 +90,13 @@ static void enqueue(const u8 *data, int size, u32 pos)
     pk = &queue[(q_head + q_count) % SPU_QUEUE];
     memcpy(pk->data, data, size);
     pk->size = size;
+    pk->pts = pts;
     pk->pos = pos;
     q_count++;
 }
 
 
-void spu_feed(const u8 *data, int len, int has_pts, u32 pos)
+void spu_feed(const u8 *data, int len, int has_pts, s64 pts, u32 pos)
 {
     if (len <= 0)
         return;
@@ -94,6 +105,7 @@ void spu_feed(const u8 *data, int len, int has_pts, u32 pos)
     {
         asm_len = 0;
         asm_active = 1;
+        asm_pts = pts;
     }
 
     if (!asm_active)
@@ -122,7 +134,7 @@ void spu_feed(const u8 *data, int len, int has_pts, u32 pos)
 
         if (asm_len >= size)
         {
-            enqueue(asm_buf, size, pos);
+            enqueue(asm_buf, size, asm_pts, pos);
             asm_len = 0;
             asm_active = 0;
         }
@@ -224,13 +236,14 @@ static void decode_rle(const u8 *p, int size, int top, int bottom,
 }
 
 
-static void decode_packet(const u8 *p, int size)
+static void decode_packet(const u8 *p, int size, s64 pts)
 {
     int dcsq = be16(p + 2);
     int off = dcsq;
     int top = -1;
     int bottom = -1;
     int x0 = 0, x1 = -1, y0 = 0, y1 = -1;
+    int stop_delay = -1;
     int guard;
 
     info.visible = 0;
@@ -238,6 +251,7 @@ static void decode_packet(const u8 *p, int size)
 
     for (guard = 0; guard < 16 && off + 4 <= size; guard++)
     {
+        int delay = be16(p + off);
         int next = be16(p + off + 2);
         int i = off + 4;
         int done = 0;
@@ -257,7 +271,8 @@ static void decode_packet(const u8 *p, int size)
                     info.visible = 1;
                     break;
 
-                case 0x02:      /* stop display: ignorado por enquanto */
+                case 0x02:      /* stop display: spu_update apaga na hora */
+                    stop_delay = delay;
                     break;
 
                 case 0x03:      /* cores: e2 e1 p b */
@@ -318,6 +333,7 @@ static void decode_packet(const u8 *p, int size)
     info.y0 = y0;
     info.x1 = x1;
     info.y1 = y1;
+    info.stop_pts = pts >= 0 && stop_delay >= 0 ? pts + (s64)stop_delay * SPU_DELAY_TICKS : -1;
 
     if (top >= 4 && bottom >= 4 && x1 >= x0 && y1 >= y0 &&
         top < dcsq && bottom < dcsq)
@@ -340,15 +356,27 @@ static void decode_packet(const u8 *p, int size)
 }
 
 
-int spu_update(u32 consumed)
+int spu_update(u32 consumed, s64 video_pts)
 {
     int changed = 0;
 
     while (q_count > 0 && (s32)(consumed - queue[q_head].pos) >= 0)
     {
-        decode_packet(queue[q_head].data, queue[q_head].size);
+        s64 pts = queue[q_head].pts;
+
+        /* no fluxo o pacote vem antes da hora de aparecer */
+        if (video_pts >= 0 && pts >= 0 && pts > video_pts && pts - video_pts < SPU_WAIT_MAX)
+            break;
+
+        decode_packet(queue[q_head].data, queue[q_head].size, pts);
         q_head = (q_head + 1) % SPU_QUEUE;
         q_count--;
+        changed = 1;
+    }
+
+    if (info.visible && video_pts >= 0 && info.stop_pts >= 0 && video_pts >= info.stop_pts)
+    {
+        info.visible = 0;
         changed = 1;
     }
 

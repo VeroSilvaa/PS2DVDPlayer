@@ -119,6 +119,7 @@ static int q_head = 0;
 static int q_count = 0;
 
 static int output_ok = 0;
+static int output_stopped = 0;      /* audsrv_stop_audio chamado: anel congelado */
 static int head_sent = 0;           /* bytes do quadro da frente já enviados */
 
 /*
@@ -659,6 +660,18 @@ void audio_pump(s64 video_pts)
         last_pump = now;
     }
 
+    /*
+     * Só audsrv_play_audio religa o anel depois de audsrv_stop_audio. Se
+     * ele congelou com AUDSRV_TARGET ou mais, o laço abaixo nunca envia
+     * nada e o filme seguinte fica mudo até o fim.
+     */
+    if (output_stopped)
+    {
+        audsrv_play_audio((const char *)silence, 4);
+        stats.rpc++;
+        output_stopped = 0;
+    }
+
     if (video_pts > 0)
         last_video_pts = video_pts;
 
@@ -782,5 +795,8 @@ void audio_pump(s64 video_pts)
 void audio_stop(void)
 {
     if (output_ok)
+    {
         audsrv_stop_audio();
+        output_stopped = 1;
+    }
 }

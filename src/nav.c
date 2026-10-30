@@ -59,7 +59,14 @@ static int last_buttons = -1;
 
 static u32 spu_clut[16];
 static u32 clut_serial = 0;
+
+/* spu_user: faixa física (>= 0), ou segue a VM, ou desligada */
+#define SPU_USER_VM  -2
+#define SPU_USER_OFF -1
+
 static int spu_stream = 0;
+static int spu_display = 0;         /* a VM manda exibir a legenda (SPRM2) */
+static int spu_user = SPU_USER_VM;  /* faixa física escolhida pelo usuário */
 static int audio_stream = 0;        /* faixa física escolhida pela VM */
 static int audio_user = -1;         /* faixa física escolhida pelo usuário */
 
@@ -411,7 +418,17 @@ s64 nav_pts_offset(void)
 
 int nav_spu_stream(void)
 {
+    /* nos menus o destaque dos botões é da faixa que a VM manda */
+    if (spu_user >= 0 && nav && dvdnav_is_domain_vts(nav))
+        return spu_user;
+
     return spu_stream;
+}
+
+
+int nav_spu_show(void)
+{
+    return spu_user == SPU_USER_VM ? spu_display : spu_user >= 0;
 }
 
 
@@ -774,41 +791,77 @@ int nav_audio_cycle(char *label, int size)
 
 
 /* ============================================================
- * LEGENDAS (por enquanto só contagem)
+ * LEGENDAS
  * ============================================================ */
 
-int nav_spu_count(char *label, int size)
+#define NAV_SPU_MAX 32
+
+/* Faixas de legenda do título: físico e idioma. Devolve quantas. */
+static int spu_tracks(int *physical, u16 *lang)
 {
     int n;
     int count = 0;
-    u16 first = 0;
 
     if (!nav || cur_domain() != DVD_DOMAIN_VTSTitle)
+        return 0;
+
+    for (n = 0; n < NAV_SPU_MAX; n++)
+    {
+        int p = dvdnav_get_spu_logical_stream(nav, (uint8_t)n);
+
+        if (p < 0)
+            continue;
+
+        physical[count] = p & 0x1F;
+        lang[count] = dvdnav_spu_stream_to_lang(nav, (uint8_t)n);
+        count++;
+    }
+
+    return count;
+}
+
+
+int nav_spu_cycle(char *label, int size)
+{
+    int physical[NAV_SPU_MAX];
+    u16 lang[NAV_SPU_MAX];
+    int count = spu_tracks(physical, lang);
+    int next = 0;
+    int i;
+
+    if (count == 0)
     {
         snprintf(label, size, "Sem legendas");
         return 0;
     }
 
-    for (n = 0; n < 32; n++)
+    if (nav_spu_show())
     {
-        if (dvdnav_get_spu_logical_stream(nav, (uint8_t)n) < 0)
-            continue;
-
-        if (count == 0)
-            first = dvdnav_spu_stream_to_lang(nav, (uint8_t)n);
-
-        count++;
+        for (i = 0; i < count; i++)
+        {
+            if (physical[i] == nav_spu_stream())
+            {
+                next = i + 1;
+                break;
+            }
+        }
     }
 
-    if (count == 0)
-        snprintf(label, size, "Sem legendas");
+    if (next >= count)
+    {
+        spu_user = SPU_USER_OFF;
+        snprintf(label, size, "Legendas desligadas");
+    }
     else
-        snprintf(label, size, "Legendas: %d (%c%c) - ainda não suportadas", count,
-                 first != 0xffff ? (char)toupper(first >> 8) : '?',
-                 first != 0xffff ? (char)toupper(first & 0xff) : '?');
+    {
+        spu_user = physical[next];
+        snprintf(label, size, "Legenda %d/%d: %c%c", next + 1, count,
+                 lang[next] != 0xffff ? (char)toupper(lang[next] >> 8) : '?',
+                 lang[next] != 0xffff ? (char)toupper(lang[next] & 0xff) : '?');
+    }
 
-    frame_logf("NAV: subtitles: %d track(s)\n", count);
-    return count;
+    frame_logf("NAV: subtitle -> %s\n", label);
+    return 1;
 }
 
 
@@ -864,6 +917,8 @@ int nav_open(const char *path, u64 size, int prefetch)
     ns.prefetch = prefetch;
     last_buttons = -1;
     spu_stream = 0;
+    spu_display = 0;
+    spu_user = SPU_USER_VM;
     audio_stream = 0;
     audio_user = -1;
     pts_offset = 0;
@@ -1062,6 +1117,9 @@ int nav_next(u8 *buf, NavEvent *ev)
                 (dvdnav_spu_stream_change_event_t *)buf;
 
             spu_stream = e->physical_wide >= 0 ? (e->physical_wide & 0x1F) : 0;
+
+            /* bit 7: só legendas forçadas (vm_get_subp_active_stream) */
+            spu_display = e->physical_wide >= 0 && !(e->physical_wide & 0x80);
             return NAV_EV_NONE;
         }
 

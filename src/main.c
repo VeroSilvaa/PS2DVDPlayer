@@ -2226,7 +2226,7 @@ static u64 us_to_ticks(u32 us)
 
 
 /* ============================================================
- * SUBPICTURE (destaque dos botões / legendas forçadas)
+ * SUBPICTURE (destaque dos botões / legendas)
  * ============================================================ */
 
 /*
@@ -2246,6 +2246,7 @@ static int spu_key_button = -1;
 static int spu_key_rect[4];
 static u32 spu_key_pal = 0;
 static int spu_key_height = 0;
+static int spu_key_subtitle = -1;
 
 
 static u32 yuv_to_gs(u32 yuv, int contrast)
@@ -2267,6 +2268,26 @@ static u32 yuv_to_gs(u32 yuv, int contrast)
 
 
 /*
+ * Cor de legenda: branco e tons de cinza do disco viram amarelo (sem o
+ * azul); o contorno escuro continua escuro. Cores próprias do disco
+ * ficam como estão.
+ */
+#define SPU_NEUTRAL 16
+
+static u32 subtitle_color(u32 yuv, int contrast)
+{
+    u32 c = yuv_to_gs(yuv, contrast);
+    int r = c & 0xFF;
+    int g = (c >> 8) & 0xFF;
+    int b = (c >> 16) & 0xFF;
+    int max = r > g ? (r > b ? r : b) : (g > b ? g : b);
+    int min = r < g ? (r < b ? r : b) : (g < b ? g : b);
+
+    return max - min <= SPU_NEUTRAL ? c & 0xFF00FFFF : c;
+}
+
+
+/*
  * Desenha o subpicture sobre o vídeo. Retorna 1 se desenhou.
  */
 static int draw_spu_overlay(GSGLOBAL *gsGlobal)
@@ -2277,12 +2298,13 @@ static int draw_spu_overlay(GSGLOBAL *gsGlobal)
     int button = 0, rx0 = 0, ry0 = 0, rx1 = -1, ry1 = -1;
     u32 pal = 0;
     int has_pal = 0;
+    int subtitle = frame_info.buttons <= 0;     /* sem botões: é legenda */
     int i;
 
     if (!frame_info.nav || !si->visible || frame_info.frames <= 0)
         return 0;
 
-    if (frame_info.buttons <= 0 && !si->forced)
+    if (frame_info.buttons <= 0 && !si->forced && !nav_spu_show())
         return 0;
 
     if (h <= 0 || h > SPU_MAX_H || frame_info.width <= 0)
@@ -2331,7 +2353,7 @@ static int draw_spu_overlay(GSGLOBAL *gsGlobal)
      */
     if (si->serial != spu_key_serial || nav_clut_serial() != spu_key_clut ||
         button != spu_key_button || pal != spu_key_pal || h != spu_key_height ||
-        rx0 != spu_key_rect[0] || ry0 != spu_key_rect[1] ||
+        subtitle != spu_key_subtitle || rx0 != spu_key_rect[0] || ry0 != spu_key_rect[1] ||
         rx1 != spu_key_rect[2] || ry1 != spu_key_rect[3])
     {
         const u8 *bm = spu_bitmap();
@@ -2356,7 +2378,8 @@ static int draw_spu_overlay(GSGLOBAL *gsGlobal)
 
         for (i = 0; i < 4; i++)
         {
-            spu_tex_clut[i] = yuv_to_gs(clut[si->color[i] & 15], si->alpha[i]);
+            spu_tex_clut[i] = subtitle ? subtitle_color(clut[si->color[i] & 15], si->alpha[i])
+                                       : yuv_to_gs(clut[si->color[i] & 15], si->alpha[i]);
             spu_tex_clut[4 + i] = yuv_to_gs(clut[(pal >> (16 + 4 * i)) & 15], (pal >> (4 * i)) & 15);
         }
 
@@ -2370,6 +2393,7 @@ static int draw_spu_overlay(GSGLOBAL *gsGlobal)
         spu_key_button = button;
         spu_key_pal = pal;
         spu_key_height = h;
+        spu_key_subtitle = subtitle;
         spu_key_rect[0] = rx0;
         spu_key_rect[1] = ry0;
         spu_key_rect[2] = rx1;
@@ -3117,8 +3141,12 @@ static int play_shortcuts(u64 now)
         play_action(BAR_AUDIO, now);
     else if (input_pressed(PAD_L2) && frame_info.nav)
     {
-        /* legendas: por enquanto só informa (exibição em etapa futura) */
-        nav_spu_count(play_osd, sizeof(play_osd));
+        int stream = nav_spu_stream();
+
+        /* mesma faixa: a fila serve, ligar de novo não perde legendas */
+        if (nav_spu_cycle(play_osd, sizeof(play_osd)) && nav_spu_stream() != stream)
+            spu_reset();
+
         play_osd_until = now + (u64)kBUSCLK * 3;
     }
     else
